@@ -1,0 +1,33 @@
+{
+    "scripts": {
+        "build": "tsc",
+        "start": "NODE_ENV=production node dist/server.js",
+        "dev": "NODE_ENV=development nodemon --watch 'src/**/*.ts' --exec 'ts-node -r tsconfig-paths/register' src/server.ts",
+        "lint": "eslint 'src/**/*.ts'"
+    },
+    "devDependencies": {
+        "@types/compression": "^1.7.5",
+        "@types/cors": "^2.8.17",
+        "@types/express": "^5.0.1",
+        "@types/helmet": "^0.0.48",
+        "@types/morgan": "^1.9.9",
+        "@types/node": "^22.14.1",
+        "dotenv": "^16.5.0",
+        "eslint": "^9.24.0",
+        "express": "^5.1.0",
+        "install": "^0.13.0",
+        "nodemon": "^3.1.9",
+        "npm": "^11.3.0",
+        "prettier": "^3.5.3",
+        "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
+        "typescript": "^5.8.3"
+    },
+    "dependencies": {
+        "compression": "^1.8.0",
+        "cors": "^2.8.5",
+        "helmet": "^8.1.0",
+        "mongoose": "^8.13.2",
+        "morgan": "^1.10.0"
+    }
+}
