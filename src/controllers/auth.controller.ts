@@ -1,0 +1,320 @@
+import axios from 'axios';
+import queryString from 'query-string';
+import { Request, Response, NextFunction } from 'express';
+import UserSchema from '@/models/user.model';
+import crypto from 'crypto';
+import { Status } from '@/types/response';
+import { userValidate } from '@/validation';
+import { errorResponse, successResponse } from '@/utils/response';
+import { generateToken } from '@/helper/jwt';
+import { generateUsername, splitFullName, verifyPassword } from '@/helper';
+import config from '@/configs/config';
+import { AuthRequest } from '@/types/auth-request';
+
+class AuthController {
+    private readonly GITHUB_URL = `https://github.com/login/oauth/authorize?
+    client_id=${config.githubClientId}&
+    redirect_uri=${config.githubRedirectUri}&
+    response_type=code&
+    scope=user:email`;
+
+    private readonly FACEBOOK_URL = `https://www.facebook.com/v22.0/dialog/oauth?
+    client_id=${config.facebookClientId}&
+    redirect_uri=${config.facebookRedirectUri}`;
+
+    async login(req: Request, res: Response, next: NextFunction) {
+        try {
+            const result = userValidate.loginUser.safeParse(req.body);
+            if (!result.success) {
+                res.send(errorResponse(Status.BAD_REQUEST, 'Login failed', result.error));
+                return;
+            }
+
+            const user = await UserSchema.findOne({ email: result.data.email });
+            if (!user) {
+                res.send(errorResponse(Status.BAD_REQUEST, 'User not found'));
+                return;
+            }
+
+            const isValidPassword = await verifyPassword(result.data.password, user.password);
+            if (!isValidPassword) {
+                res.send(errorResponse(Status.UNAUTHORIZED, 'Invalid password'));
+                return;
+            }
+
+            const accessToken = await generateToken(user._id.toString(), 'access');
+            const refreshToken = await generateToken(user._id.toString(), 'refresh');
+
+            console.log(config.cookieDomain, config.refreshTokenPath);
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                maxAge: config.cookieMaxAge,
+                path: config.refreshTokenPath,
+                domain: config.cookieDomain,
+            });
+
+            res.send(successResponse(Status.OK, 'Login successfully', { user, accessToken }));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async register(req: Request, res: Response, next: NextFunction) {
+        try {
+            const result = userValidate.registerUser.safeParse(req.body);
+            const isExistEmail = await UserSchema.findOne({ email: req.body.email });
+            if (isExistEmail) {
+                res.send(errorResponse(Status.BAD_REQUEST, 'Email already exists'));
+                return;
+            }
+
+            if (!result.success) {
+                res.send(errorResponse(Status.BAD_REQUEST, 'Register failed', result.error));
+                return;
+            }
+
+            const { firstName, lastName } = splitFullName(result.data.fullName);
+            const username = await generateUsername(result.data.email);
+            const user = await UserSchema.create({
+                ...result.data,
+                firstName,
+                lastName,
+                username,
+            });
+
+            const accessToken = await generateToken(user._id.toString(), 'access');
+            const refreshToken = await generateToken(user._id.toString(), 'refresh');
+
+            console.log(config.cookieDomain, config.refreshTokenPath);
+
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                maxAge: config.cookieMaxAge,
+                path: config.refreshTokenPath,
+                domain: config.cookieDomain,
+            });
+            res.send(successResponse(Status.CREATED, 'Register successfully', { user, accessToken }));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async logout(req: Request, res: Response, next: NextFunction) {
+        try {
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async refreshToken(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.payload?.userId;
+
+            if (userId) {
+                const accessToken = await generateToken(userId, 'access');
+                const refreshToken = await generateToken(userId, 'refresh');
+                res.cookie('refreshToken', refreshToken, {
+                    httpOnly: true,
+                    maxAge: config.cookieMaxAge,
+                    path: config.refreshTokenPath,
+                    domain: config.cookieDomain,
+                });
+                res.send(successResponse(Status.OK, 'Refresh token successfully', { accessToken }));
+                return;
+            }
+
+            res.send(errorResponse(Status.BAD_REQUEST, 'Refresh token failed'));
+            return;
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async googleOAuth(req: Request, res: Response, next: NextFunction) {
+        try {
+            console.log(config.googleRedirectUri);
+
+            const googleUrl =
+                `https://accounts.google.com/o/oauth2/v2/auth` +
+                `?client_id=${config.googleClientId}` +
+                `&redirect_uri=${config.googleRedirectUri}` +
+                `&response_type=code` +
+                `&scope=email%20profile`;
+            res.redirect(googleUrl);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async githubOAuth(req: Request, res: Response, next: NextFunction) {
+        try {
+            const params = queryString.stringify({
+                client_id: config.githubClientId,
+                redirect_uri: config.githubRedirectUri,
+                response_type: 'code',
+                scope: ['read:user', 'user:email'].join(' '),
+                allow_signup: true,
+            });
+            const githubUrl = `https://github.com/login/oauth/authorize?${params}`;
+
+            res.redirect(githubUrl);
+        } catch (error) {
+            next(error);
+        }
+    }
+    async facebookOAuth(req: Request, res: Response, next: NextFunction) {
+        try {
+            res.redirect(this.FACEBOOK_URL);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async googleOAuthCallback(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { code } = req.query;
+            if (code) {
+                const { data } = await axios.post('https://oauth2.googleapis.com/token', {
+                    client_id: config.googleClientId,
+                    client_secret: config.googleClientSecret,
+                    code,
+                    redirect_uri: config.googleRedirectUri,
+                    grant_type: 'authorization_code',
+                });
+
+                const { access_token } = data;
+
+                const { data: profile } = await axios.get('https://www.googleapis.com/oauth2/v1/userinfo', {
+                    headers: { Authorization: `Bearer ${access_token}` },
+                });
+
+                const { email, name, picture } = profile;
+
+                let accessToken = '';
+                let refreshToken = '';
+                const user = await UserSchema.findOne({ email });
+
+                console.log('EMAIL : ', user);
+
+                if (!user) {
+                    const { firstName, lastName } = splitFullName(name);
+                    const username = await generateUsername(email);
+                    const newUser = await UserSchema.create({
+                        email,
+                        fullName: name,
+                        firstName,
+                        lastName,
+                        username,
+                        avatar: picture,
+                        password: crypto.randomBytes(32).toString('hex'),
+                    });
+
+                    accessToken = await generateToken(newUser._id.toString(), 'access');
+                    refreshToken = await generateToken(newUser._id.toString(), 'refresh');
+                    res.cookie('refreshToken', refreshToken, {
+                        httpOnly: true,
+                        maxAge: config.cookieMaxAge,
+                        path: config.refreshTokenPath,
+                    });
+                    res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
+                    return;
+                } else {
+                    accessToken = await generateToken(user._id.toString(), 'access');
+                    refreshToken = await generateToken(user._id.toString(), 'refresh');
+                    res.cookie('refreshToken', refreshToken, {
+                        httpOnly: true,
+                        maxAge: config.cookieMaxAge,
+                        path: config.refreshTokenPath,
+                    });
+                    res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
+                    return;
+                }
+            } else {
+                res.redirect(`${config.corsOrigin}/oauth2?token=null`);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async githubOAuthCallback(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { code } = req.query;
+
+            if (code) {
+                const { data } = await axios({
+                    url: 'https://github.com/login/oauth/access_token',
+                    method: 'get',
+                    params: {
+                        client_id: config.githubClientId,
+                        client_secret: config.githubClientSecret,
+                        redirect_uri: config.githubRedirectUri,
+                        code,
+                    },
+                });
+
+                const parsedData = queryString.parse(data);
+                const { access_token } = parsedData;
+
+                const { data: profile } = await axios.get('https://api.github.com/user', {
+                    headers: { Authorization: `Bearer ${access_token}` },
+                });
+
+                const { email, name, avatar_url } = profile;
+                let accessToken = '';
+                let refreshToken = '';
+                const user = await UserSchema.findOne({ email });
+
+                console.log('EMAIL : ', user);
+
+                if (!user) {
+                    const { firstName, lastName } = splitFullName(name);
+                    const username = await generateUsername(email);
+                    const newUser = await UserSchema.create({
+                        email,
+                        fullName: name,
+                        firstName,
+                        lastName,
+                        username,
+                        avatar: avatar_url,
+                        password: crypto.randomBytes(32).toString('hex'),
+                    });
+
+                    accessToken = await generateToken(newUser._id.toString(), 'access');
+                    refreshToken = await generateToken(newUser._id.toString(), 'refresh');
+                    res.cookie('refreshToken', refreshToken, {
+                        httpOnly: true,
+                        maxAge: config.cookieMaxAge,
+                        path: config.refreshTokenPath,
+                    });
+                    res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
+                    return;
+                } else {
+                    accessToken = await generateToken(user._id.toString(), 'access');
+                    refreshToken = await generateToken(user._id.toString(), 'refresh');
+                    res.cookie('refreshToken', refreshToken, {
+                        httpOnly: true,
+                        maxAge: config.cookieMaxAge,
+                        path: config.refreshTokenPath,
+                    });
+                    res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
+                    return;
+                }
+            } else {
+                res.redirect(`${config.corsOrigin}/oauth2?token=null`);
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async facebookOAuthCallback(req: Request, res: Response, next: NextFunction) {
+        try {
+        } catch (error) {
+            next(error);
+        }
+    }
+}
+
+export default new AuthController();

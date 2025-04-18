@@ -1,9 +1,22 @@
 import { Express } from 'express';
-import userRoutes from './user.routes';
 import config from '@/configs/config';
+
+import userRoutes from './user.routes';
+import authRoutes from './auth.routes';
+import conversationRoutes from './conversation.routes';
+import groupRoutes from './groups.routes';
+import invitationRoutes from './invitation.routes';
+import notificationRoutes from './notification.routes';
+
+import { verifyRefreshToken } from '@/helper/jwt';
 
 const routes = (app: Express) => {
     app.use(`${config.apiBasePath}/users`, userRoutes);
+    app.use(`${config.apiBasePath}/auth`, authRoutes);
+    app.use(`${config.apiBasePath}/conversations`, conversationRoutes);
+    app.use(`${config.apiBasePath}/groups`, groupRoutes);
+    app.use(`${config.apiBasePath}/invitation`, invitationRoutes);
+    app.use(`${config.apiBasePath}/notifications`, notificationRoutes);
 };
 
 export default routes;
