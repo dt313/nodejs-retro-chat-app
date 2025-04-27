@@ -2,18 +2,24 @@ import { Request, Response, NextFunction } from 'express';
 import { Status } from '@/types/response';
 import { errorResponse, successResponse } from '@/utils/response';
 import NotificationSchema from '@/models/notification.model';
+import { AuthRequest } from '@/types/auth-request';
 
 class NotificationController {
-    async getAllNotificationsById(req: Request, res: Response, next: NextFunction) {
+    async getAllNotificationsByUserId(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const { userId } = req.params;
+            const me = req.payload?.userId;
+
+            if (me !== userId) {
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User ID and token not match'));
+            }
 
             if (!userId) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
                 return;
             }
 
-            const notifications = await NotificationSchema.find({ userId: userId })
+            const notifications = await NotificationSchema.find({ user: userId })
                 .populate('sender', 'fullName avatar id username')
                 .populate('user', 'fullName avatar id username')
                 .sort({ createdAt: -1 });

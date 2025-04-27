@@ -1,14 +1,18 @@
 import { Request, Response, NextFunction } from 'express';
 import ConversationSchema from '@/models/conversation.model';
+import UserSchema from '@/models/user.model';
 import { createParticipants, createParticipantsForGroup } from '@/helper';
 
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
+import { AuthRequest } from '@/types/auth-request';
 
 class ConversationController {
-    async create(req: Request, res: Response, next: NextFunction) {
+    async create(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { isGroup, name, avatar, description, rules, createdBy, participants: participantsReq } = req.body;
+            const me = req.payload?.userId;
+
+            const { isGroup, name, avatar, type, description, rules, participants: participantsReq } = req.body;
             // 1-1 conversation
             if (!isGroup && participantsReq.length === 2) {
                 console.log('create conversation 1-1');
@@ -23,7 +27,9 @@ class ConversationController {
                 });
 
                 if (isExist) {
-                    res.json(errorResponse(Status.BAD_REQUEST, 'Conversation already exists'));
+                    res.status(Status.BAD_REQUEST).json(
+                        errorResponse(Status.BAD_REQUEST, 'Conversation already exists'),
+                    );
                     return;
                 }
 
@@ -31,7 +37,7 @@ class ConversationController {
 
                 const conversation = await ConversationSchema.create({
                     isGroup,
-                    createdBy,
+                    createdBy: me,
                     participants: newParticipants,
                 });
 
@@ -41,23 +47,22 @@ class ConversationController {
                 // group conversation
                 console.log('create conversation group');
 
-                const newParticipants = await createParticipantsForGroup(participantsReq, createdBy);
+                const newParticipants = await createParticipantsForGroup([me], me);
 
                 const conversation = await ConversationSchema.create({
                     isGroup,
-                    createdBy,
+                    createdBy: me,
                     participants: newParticipants,
                     name,
                     avatar,
                     description,
                     rules,
+                    type,
                 });
 
                 res.json(successResponse(Status.OK, 'Create group conversation successfully', conversation));
                 return;
             }
-
-            res.json(successResponse(Status.OK, 'Create conversation successfully'));
         } catch (error) {
             next(error);
         }
@@ -73,15 +78,32 @@ class ConversationController {
         }
     }
 
-    async getConversationById(req: Request, res: Response, next: NextFunction) {
+    async getConversationById(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
+
             const conversation = await ConversationSchema.findById(id);
             if (!conversation) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
                 return;
             }
             res.json(successResponse(Status.OK, 'Get conversation by id successfully', conversation));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getConversationsByMe(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const me = req.payload?.userId;
+
+            const conversation = await ConversationSchema.find({ createdBy: me });
+            if (!conversation) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found', []));
+                return;
+            }
+
+            res.json(successResponse(Status.OK, 'Get conversation by id successfully', conversation || []));
         } catch (error) {
             next(error);
         }

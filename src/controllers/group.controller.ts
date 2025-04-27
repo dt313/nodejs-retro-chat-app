@@ -23,7 +23,7 @@ class GroupController {
             const group = await ConversationSchema.findOne({ _id: id, isGroup: true });
 
             if (!group) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
                 return;
             }
             res.json(successResponse(Status.OK, 'Group fetched successfully', group));
@@ -40,7 +40,7 @@ class GroupController {
             const result = groupValidate.joinGroup.safeParse({ userId, groupId: id });
 
             if (!result.success) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
                 return;
             }
 
@@ -49,7 +49,7 @@ class GroupController {
             });
 
             if (!user) {
-                res.json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
                 return;
             }
 
@@ -59,12 +59,14 @@ class GroupController {
             });
 
             if (!group) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
                 return;
             }
 
             if (group.participants.includes(userId)) {
-                res.json(errorResponse(Status.FORBIDDEN, 'You are already a member of this group'));
+                res.status(Status.FORBIDDEN).json(
+                    errorResponse(Status.FORBIDDEN, 'You are already a member of this group'),
+                );
                 return;
             }
 

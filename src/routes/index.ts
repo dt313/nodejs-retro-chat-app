@@ -7,7 +7,7 @@ import conversationRoutes from './conversation.routes';
 import groupRoutes from './groups.routes';
 import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
-
+import messageRouter from './message.routes';
 import { verifyRefreshToken } from '@/helper/jwt';
 
 const routes = (app: Express) => {
@@ -17,6 +17,7 @@ const routes = (app: Express) => {
     app.use(`${config.apiBasePath}/groups`, groupRoutes);
     app.use(`${config.apiBasePath}/invitation`, invitationRoutes);
     app.use(`${config.apiBasePath}/notifications`, notificationRoutes);
+    app.use(`${config.apiBasePath}/message`, messageRouter);
 };
 
 export default routes;

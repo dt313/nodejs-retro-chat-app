@@ -33,6 +33,11 @@ const ConversationSchema = new mongoose.Schema(
             default: null,
         },
 
+        type: {
+            type: String,
+            default: null,
+        },
+
         isDeleted: { type: Boolean, default: false },
     },
     { timestamps: true },

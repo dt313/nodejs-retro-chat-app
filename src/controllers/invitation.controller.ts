@@ -5,18 +5,14 @@ import FriendRequestSchema from '@/models/friend-request.model';
 import FriendshipSchema from '@/models/friendship.model';
 import UserSchema from '@/models/user.model';
 import NotificationSchema from '@/models/notification.model';
-import { WebSocket } from 'ws';
+import CustomWebSocket from '@/types/web-socket';
 
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
 import { invitationValidate } from '@/validation';
 import ws from '@/configs/ws';
-
-// Extend WebSocket type to include our custom property
-interface CustomWebSocket extends WebSocket {
-    isAuthenticated: boolean;
-    userId: string;
-}
+import { AuthRequest } from '@/types/auth-request';
+import { compareTime, diffTime } from '@/helper/time';
 
 class InvitationController {
     async createGroupInvitation(req: Request, res: Response, next: NextFunction) {
@@ -30,7 +26,7 @@ class InvitationController {
             });
 
             if (!group) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
                 return;
             }
 
@@ -39,7 +35,9 @@ class InvitationController {
             const isMember = group.participants.some((participant) => participant.toString() === invitedBy);
 
             if (!isMember) {
-                res.json(errorResponse(Status.FORBIDDEN, 'You are not a member of this group'));
+                res.status(Status.FORBIDDEN).json(
+                    errorResponse(Status.FORBIDDEN, 'You are not a member of this group'),
+                );
                 return;
             }
 
@@ -52,12 +50,16 @@ class InvitationController {
 
             if (isInvited) {
                 if (isInvited.status === 'pending') {
-                    res.json(errorResponse(Status.FORBIDDEN, 'This friend is already invited to this group'));
+                    res.status(Status.FORBIDDEN).json(
+                        errorResponse(Status.FORBIDDEN, 'This friend is already invited to this group'),
+                    );
                     return;
                 }
 
                 if (isInvited.status === 'accepted') {
-                    res.json(errorResponse(Status.FORBIDDEN, 'This friend is already a member of this group'));
+                    res.status(Status.FORBIDDEN).json(
+                        errorResponse(Status.FORBIDDEN, 'This friend is already a member of this group'),
+                    );
                     return;
                 }
 
@@ -88,7 +90,7 @@ class InvitationController {
             const { userId } = req.params;
 
             if (!userId) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
                 return;
             }
 
@@ -107,14 +109,14 @@ class InvitationController {
             const result = invitationValidate.replyInvitation.safeParse({ id, status, userId });
 
             if (!result.success) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
                 return;
             }
 
             const invitation = await GroupInvitationSchema.findOne({ _id: id, invitedTo: userId, status: 'pending' });
 
             if (!invitation) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Invitation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Invitation not found'));
                 return;
             }
 
@@ -125,7 +127,7 @@ class InvitationController {
                 const group = await ConversationSchema.findOne({ _id: invitation.conversationId });
 
                 if (!group) {
-                    res.json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                    res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
                     return;
                 }
 
@@ -152,7 +154,7 @@ class InvitationController {
         try {
             const { userId } = req.params;
             if (!userId) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
                 return;
             }
 
@@ -164,78 +166,95 @@ class InvitationController {
         }
     }
 
-    async createFriendRequest(req: Request, res: Response, next: NextFunction) {
+    async createFriendRequest(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { userId } = req.params;
-            const { requesterId } = req.body;
+            const { to: toId } = req.params;
+            const fromId = req.payload?.userId;
 
-            const result = invitationValidate.createFriendRequest.safeParse({ userId, requesterId });
+            console.log('AUTH ', fromId);
+            const result = invitationValidate.createFriendRequest.safeParse({ toId, fromId });
 
             if (!result.success) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
                 return;
             }
 
-            if (userId === requesterId) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'You cannot send a friend request to yourself'));
+            if (toId === fromId) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You cannot send a friend request to yourself'),
+                );
                 return;
             }
 
-            const isReceivedUserExist = await UserSchema.findOne({ _id: userId });
+            const isReceivedUserExist = await UserSchema.findOne({ _id: toId });
 
             if (!isReceivedUserExist) {
-                res.json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
                 return;
             }
 
-            const isRequestUserExist = await UserSchema.findOne({ _id: requesterId });
+            const isRequestUserExist = await UserSchema.findOne({ _id: fromId });
 
             if (!isRequestUserExist) {
-                res.json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
                 return;
             }
 
             const isRequested = await FriendRequestSchema.findOne({
                 $or: [
                     {
-                        receiver: userId,
-                        sender: requesterId,
+                        receiver: toId,
+                        sender: fromId,
                     },
                     {
-                        receiver: requesterId,
-                        sender: userId,
+                        receiver: fromId,
+                        sender: toId,
                     },
                 ],
             });
 
             if (isRequested) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'Request already exists by you or this user'));
-                return;
+                if (isRequested.status === 'rejected' && isRequested.respondedAt) {
+                    const diff = diffTime(isRequested.respondedAt);
+                    const oneDay = 24 * 60 * 60 * 1000;
+                    const compareDate = compareTime(oneDay, diff);
+                    if (compareDate === 1) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, 'You cannot request 2 time in a day'),
+                        );
+                        return;
+                    }
+                } else {
+                    res.status(Status.BAD_REQUEST).json(
+                        errorResponse(Status.BAD_REQUEST, 'Request already exists by you or this user'),
+                    );
+                    return;
+                }
             }
 
             const isFriend = await FriendshipSchema.findOne({
                 $or: [
-                    { user1: userId, user2: requesterId },
-                    { user1: requesterId, user2: userId },
+                    { user1: toId, user2: fromId },
+                    { user1: fromId, user2: toId },
                 ],
             });
 
             if (isFriend) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'You are already friends'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You are already friends'));
                 return;
             }
 
             const newFriendRequest = await FriendRequestSchema.create({
-                sender: requesterId,
-                receiver: userId,
+                sender: fromId,
+                receiver: toId,
             });
 
             // notify to receiver
 
             const notification = await NotificationSchema.create({
-                user: userId,
+                user: toId,
                 type: 'friend_request',
-                sender: requesterId,
+                sender: fromId,
             });
 
             const populatedNotification = await NotificationSchema.findOne({
@@ -249,7 +268,7 @@ class InvitationController {
             if (socket) {
                 socket.clients.forEach((client) => {
                     const customClient = client as CustomWebSocket;
-                    if (customClient.isAuthenticated && customClient.userId === userId) {
+                    if (customClient.isAuthenticated && customClient.userId === toId) {
                         customClient.send(
                             JSON.stringify({
                                 type: 'notification',
@@ -268,7 +287,7 @@ class InvitationController {
         }
     }
 
-    async replyFriendRequest(req: Request, res: Response, next: NextFunction) {
+    async replyFriendRequestById(req: Request, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
             const { status, userId } = req.body;
@@ -276,23 +295,27 @@ class InvitationController {
             const result = invitationValidate.replyFriendRequest.safeParse({ id, status, userId });
 
             if (!result.success) {
-                res.json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
                 return;
             }
 
             const isUserExist = await UserSchema.findOne({ _id: userId });
 
             if (!isUserExist) {
-                res.json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
                 return;
             }
 
-            const friendRequest = await FriendRequestSchema.findOne({ _id: id, receiverId: userId, status: 'pending' });
+            const friendRequest = await FriendRequestSchema.findOne({
+                _id: id,
+                receiver: userId,
+                status: 'pending',
+            });
 
             console.log(friendRequest);
 
             if (!friendRequest) {
-                res.json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
                 return;
             }
 
@@ -312,10 +335,140 @@ class InvitationController {
             }
 
             friendRequest.respondedAt = new Date();
-
             await friendRequest.save();
 
             res.json(successResponse(Status.OK, 'Friend request replied successfully', friendRequest));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async replyFriendRequest(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { status, sender } = req.body;
+            const meId = req.payload?.userId;
+
+            const result = invitationValidate.replyFriendRequest.safeParse({ id: meId, status, userId: sender });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                return;
+            }
+
+            const isUserExist = await UserSchema.findOne({ _id: sender });
+
+            if (!isUserExist) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                return;
+            }
+
+            const friendRequest = await FriendRequestSchema.findOne({
+                receiver: meId,
+                sender,
+                status: 'pending',
+            });
+
+            console.log(friendRequest);
+
+            if (!friendRequest) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
+                return;
+            }
+
+            if (status === 'accepted') {
+                friendRequest.status = 'accepted';
+                // add to friendship
+                await FriendshipSchema.create({
+                    user1: friendRequest.sender,
+                    user2: friendRequest.receiver,
+                });
+
+                // notification for sender
+                const notification = await NotificationSchema.create({
+                    user: sender,
+                    type: 'friend_request_accepted',
+                    sender: meId,
+                });
+
+                const populatedNotification = await NotificationSchema.findOne({
+                    _id: notification._id,
+                })
+                    .populate('sender', 'fullName avatar id username')
+                    .populate('user', 'fullName avatar id username');
+
+                const socket = ws.getWSS();
+
+                if (socket) {
+                    socket.clients.forEach((client) => {
+                        const customClient = client as CustomWebSocket;
+                        if (customClient.isAuthenticated && customClient.userId === sender) {
+                            customClient.send(
+                                JSON.stringify({
+                                    type: 'notification',
+                                    data: {
+                                        notification: populatedNotification,
+                                    },
+                                }),
+                            );
+                        }
+                    });
+                }
+            }
+
+            if (status === 'rejected') {
+                friendRequest.status = 'rejected';
+            }
+
+            friendRequest.respondedAt = new Date();
+
+            await friendRequest.save();
+
+            await NotificationSchema.deleteOne({
+                user: meId,
+                sender: sender,
+                type: 'friend_request',
+            });
+
+            res.json(successResponse(Status.OK, 'Friend request replied successfully', friendRequest));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async cancelFriendRequest(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { toUserId } = req.params;
+            const meId = req.payload?.userId;
+
+            const result = invitationValidate.cancelFriendRequest.safeParse({ receiver: toUserId, sender: meId });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                return;
+            }
+
+            const friendRequest = await FriendRequestSchema.findOneAndDelete({
+                status: 'pending',
+                sender: meId,
+                receiver: toUserId,
+            });
+
+            if (!!friendRequest) {
+                res.status(Status.OK).json(
+                    successResponse(Status.OK, 'Cancel friend request successfully', friendRequest),
+                );
+
+                // remove notification
+                await NotificationSchema.deleteOne({
+                    user: toUserId,
+                    sender: meId,
+                    type: 'friend_request',
+                });
+            } else {
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'Cannot found friend request record'),
+                );
+            }
         } catch (error) {
             next(error);
         }

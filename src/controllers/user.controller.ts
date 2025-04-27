@@ -1,8 +1,12 @@
 import { AuthRequest } from '@/types/auth-request';
 import { Request, Response, NextFunction } from 'express';
 import UserSchema from '@/models/user.model';
+import FriendRequestSchema from '@/models/friend-request.model';
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
+import { getUserIdFromAccessToken } from '@/helper/jwt';
+import { ObjectId } from 'mongoose';
+import Friendship from '@/models/friendship.model';
 
 class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -12,7 +16,7 @@ class UserController {
             if (user) {
                 res.json(user);
             } else {
-                res.json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
             }
         } catch (error) {
             next(error);
@@ -21,7 +25,58 @@ class UserController {
 
     async getUsers(req: Request, res: Response, next: NextFunction) {
         try {
-            const users = await UserSchema.find();
+            let meId = null;
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
+
+            let users = await UserSchema.find({ _id: { $ne: meId } });
+
+            if (meId) {
+                console.log(meId);
+
+                const friendShips = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });
+                const myFriends = new Set(
+                    friendShips.map((fr) => (fr.user1.toString() === meId ? fr.user2.toString() : fr.user1.toString())),
+                );
+                const friendRequests = await FriendRequestSchema.find({
+                    status: 'pending',
+                    $or: [
+                        {
+                            sender: meId,
+                        },
+                        { receiver: meId },
+                    ],
+                    $nor: [
+                        {
+                            sender: { $in: Array.from(myFriends) },
+                            receiver: { $in: Array.from(myFriends) },
+                        },
+                    ],
+                });
+
+                const requestedByMe = new Set(
+                    friendRequests.filter((fr) => fr.sender.toString() === meId).map((fr) => fr.receiver.toString()),
+                );
+
+                const requestedByOther = new Set(
+                    friendRequests.filter((fr) => fr.receiver.toString() === meId).map((fr) => fr.sender.toString()),
+                );
+
+                users = users.map((user: any) => {
+                    const userId = user._id.toString();
+                    return {
+                        ...(user.toObject?.() ?? user),
+                        isFriendRequestedByOther: requestedByOther.has(userId),
+                        isFriendRequestedByMe: requestedByMe.has(userId),
+                        isFriend: myFriends.has(userId),
+                    };
+                });
+            }
+
             res.json(successResponse(Status.OK, 'Users fetched successfully', users));
         } catch (error) {
             next(error);
@@ -35,7 +90,7 @@ class UserController {
             if (user) {
                 res.json(successResponse(Status.OK, 'User fetched successfully', user));
             } else {
-                res.json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
             }
         } catch (error) {
             next(error);
@@ -49,7 +104,7 @@ class UserController {
             if (user) {
                 res.json(successResponse(Status.OK, 'User fetched successfully', user));
             } else {
-                res.json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
             }
         } catch (error) {
             next(error);

@@ -12,12 +12,6 @@ import config from '@/configs/config';
 import { AuthRequest } from '@/types/auth-request';
 
 class AuthController {
-    private readonly GITHUB_URL = `https://github.com/login/oauth/authorize?
-    client_id=${config.githubClientId}&
-    redirect_uri=${config.githubRedirectUri}&
-    response_type=code&
-    scope=user:email`;
-
     private readonly FACEBOOK_URL = `https://www.facebook.com/v22.0/dialog/oauth?
     client_id=${config.facebookClientId}&
     redirect_uri=${config.facebookRedirectUri}`;
@@ -45,7 +39,7 @@ class AuthController {
             const accessToken = await generateToken(user._id.toString(), 'access');
             const refreshToken = await generateToken(user._id.toString(), 'refresh');
 
-            console.log(config.cookieDomain, config.refreshTokenPath);
+            console.log('after call ', accessToken);
 
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true,
@@ -83,18 +77,7 @@ class AuthController {
                 username,
             });
 
-            const accessToken = await generateToken(user._id.toString(), 'access');
-            const refreshToken = await generateToken(user._id.toString(), 'refresh');
-
-            console.log(config.cookieDomain, config.refreshTokenPath);
-
-            res.cookie('refreshToken', refreshToken, {
-                httpOnly: true,
-                maxAge: config.cookieMaxAge,
-                path: config.refreshTokenPath,
-                domain: config.cookieDomain,
-            });
-            res.send(successResponse(Status.CREATED, 'Register successfully', { user, accessToken }));
+            res.send(successResponse(Status.CREATED, 'Register successfully', { user }));
         } catch (error) {
             next(error);
         }
@@ -113,13 +96,6 @@ class AuthController {
 
             if (userId) {
                 const accessToken = await generateToken(userId, 'access');
-                const refreshToken = await generateToken(userId, 'refresh');
-                res.cookie('refreshToken', refreshToken, {
-                    httpOnly: true,
-                    maxAge: config.cookieMaxAge,
-                    path: config.refreshTokenPath,
-                    domain: config.cookieDomain,
-                });
                 res.send(successResponse(Status.OK, 'Refresh token successfully', { accessToken }));
                 return;
             }
@@ -216,6 +192,7 @@ class AuthController {
                         httpOnly: true,
                         maxAge: config.cookieMaxAge,
                         path: config.refreshTokenPath,
+                        domain: config.cookieDomain,
                     });
                     res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
                     return;
@@ -226,6 +203,7 @@ class AuthController {
                         httpOnly: true,
                         maxAge: config.cookieMaxAge,
                         path: config.refreshTokenPath,
+                        domain: config.cookieDomain,
                     });
                     res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
                     return;
@@ -287,6 +265,7 @@ class AuthController {
                         httpOnly: true,
                         maxAge: config.cookieMaxAge,
                         path: config.refreshTokenPath,
+                        domain: config.cookieDomain,
                     });
                     res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
                     return;
@@ -297,6 +276,7 @@ class AuthController {
                         httpOnly: true,
                         maxAge: config.cookieMaxAge,
                         path: config.refreshTokenPath,
+                        domain: config.cookieDomain,
                     });
                     res.redirect(`${config.corsOrigin}/oauth2?token=${accessToken}`);
                     return;
