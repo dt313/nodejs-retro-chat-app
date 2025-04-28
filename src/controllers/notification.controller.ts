@@ -20,8 +20,9 @@ class NotificationController {
             }
 
             const notifications = await NotificationSchema.find({ user: userId })
-                .populate('sender', 'fullName avatar id username')
-                .populate('user', 'fullName avatar id username')
+                .populate('sender', 'fullName avatar _id username')
+                .populate('user', 'fullName avatar _id username')
+                .populate('group', '_id name thumbnail')
                 .sort({ createdAt: -1 });
 
             res.json(successResponse(Status.OK, 'Get all notifications successfully', notifications));

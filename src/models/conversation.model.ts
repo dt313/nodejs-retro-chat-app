@@ -5,7 +5,7 @@ const ConversationSchema = new mongoose.Schema(
     {
         isGroup: { type: Boolean, default: false },
         name: { type: String, default: null },
-        avatar: { type: String, default: null },
+        thumbnail: { type: String, default: null },
         description: { type: String, default: null },
         rules: { type: String, default: null },
         createdBy: {
@@ -34,6 +34,16 @@ const ConversationSchema = new mongoose.Schema(
         },
 
         type: {
+            type: String,
+            default: null,
+        },
+
+        isPrivate: {
+            type: Boolean,
+            default: false,
+        },
+
+        password: {
             type: String,
             default: null,
         },

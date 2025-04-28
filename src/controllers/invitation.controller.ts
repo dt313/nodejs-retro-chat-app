@@ -224,9 +224,9 @@ class InvitationController {
                         );
                         return;
                     }
-                } else {
+                } else if (isRequested.status === 'accepted') {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'Request already exists by you or this user'),
+                        errorResponse(Status.BAD_REQUEST, 'This user is already your friend'),
                     );
                     return;
                 }

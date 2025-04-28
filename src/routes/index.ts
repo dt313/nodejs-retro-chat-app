@@ -17,7 +17,7 @@ const routes = (app: Express) => {
     app.use(`${config.apiBasePath}/groups`, groupRoutes);
     app.use(`${config.apiBasePath}/invitation`, invitationRoutes);
     app.use(`${config.apiBasePath}/notifications`, notificationRoutes);
-    app.use(`${config.apiBasePath}/message`, messageRouter);
+    app.use(`${config.apiBasePath}/messages`, messageRouter);
 };
 
 export default routes;

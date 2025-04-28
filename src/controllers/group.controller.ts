@@ -1,11 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
+import { Types } from 'mongoose';
+
 import ConversationSchema from '@/models/conversation.model';
 import UserSchema from '@/models/user.model';
-import GroupInvitationSchema from '@/models/group-invitation.model';
-import { errorResponse, successResponse } from '@/utils/response';
-import { Status } from '@/types/response';
 
+import { Status } from '@/types/response';
+import { AuthRequest } from '@/types/auth-request';
+import { verifyPassword } from '@/helper';
 import { groupValidate } from '@/validation';
+import { errorResponse, successResponse } from '@/utils/response';
+
+import { senJoinGroupNotification } from '@/utils/ws-send-notification';
 
 class GroupController {
     async getAllGroups(req: Request, res: Response, next: NextFunction) {
@@ -32,12 +37,20 @@ class GroupController {
         }
     }
 
-    async joinGroup(req: Request, res: Response, next: NextFunction) {
+    async joinGroup(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = req.params;
-            const { userId } = req.body;
+            const { groupId } = req.params;
+            const meId = req.payload?.userId;
 
-            const result = groupValidate.joinGroup.safeParse({ userId, groupId: id });
+            if (!meId) {
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                return;
+            }
+
+            const password = req.body?.password || null;
+            const meIdObjectId = new Types.ObjectId(meId);
+
+            const result = groupValidate.joinGroup.safeParse({ userId: meId, groupId });
 
             if (!result.success) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
@@ -45,7 +58,7 @@ class GroupController {
             }
 
             const user = await UserSchema.findOne({
-                _id: userId,
+                _id: meIdObjectId,
             });
 
             if (!user) {
@@ -54,7 +67,7 @@ class GroupController {
             }
 
             const group = await ConversationSchema.findOne({
-                _id: id,
+                _id: groupId,
                 isGroup: true,
             });
 
@@ -63,15 +76,33 @@ class GroupController {
                 return;
             }
 
-            if (group.participants.includes(userId)) {
+            let isValidPassword = !group.isPrivate;
+            if (group.isPrivate) {
+                console.log(password);
+                isValidPassword = await verifyPassword(password, group.password);
+                if (!isValidPassword) {
+                    res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Group password wrong'));
+                    return;
+                }
+            }
+
+            if (isValidPassword && group.participants.includes(meIdObjectId)) {
                 res.status(Status.FORBIDDEN).json(
                     errorResponse(Status.FORBIDDEN, 'You are already a member of this group'),
                 );
                 return;
             }
 
-            group.participants.push(userId);
+            group.participants.push(meIdObjectId);
             await group.save();
+
+            // notification to admin
+            await senJoinGroupNotification({
+                fromId: meId.toString(),
+                toId: group.createdBy.toString(),
+                type: 'group_joined',
+                groupId: group._id.toString(),
+            });
 
             res.json(successResponse(Status.OK, 'Joined group successfully', group));
         } catch (error) {

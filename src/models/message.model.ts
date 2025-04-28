@@ -1,12 +1,4 @@
 import mongoose from 'mongoose';
-import ReactionSchema from './reaction.model';
-
-const AttachmentSchema = new mongoose.Schema({
-    url: { type: String, required: true, require: true },
-    name: { type: String, required: true },
-    type: { type: String, enum: ['image', 'file'], required: true },
-    size: { type: Number, required: true },
-});
 
 const MessageSchema = new mongoose.Schema(
     {
@@ -25,14 +17,26 @@ const MessageSchema = new mongoose.Schema(
         },
         messageType: {
             type: String,
-            enum: ['text', 'file', 'text-file'],
+            enum: ['text', 'attachment', 'mixed'],
             required: true,
         },
 
         readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+        replyTo: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Message',
+            default: null,
+        },
 
-        attachments: [{ type: AttachmentSchema, default: [] }],
-        reactions: [{ type: ReactionSchema, default: [] }],
+        attachments: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: 'Attachment',
+        },
+        reactions: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: 'Reaction',
+            default: [],
+        },
 
         deletedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
         isDeleted: { type: Boolean, default: false },
