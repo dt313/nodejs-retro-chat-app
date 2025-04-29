@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import ParticipantSchema from './participant.model';
 
 const ConversationSchema = new mongoose.Schema(
     {
@@ -19,7 +18,7 @@ const ConversationSchema = new mongoose.Schema(
         participants: {
             type: [mongoose.Schema.Types.ObjectId],
             ref: 'Participant',
-            required: true,
+            default: [],
         },
 
         lastMessage: {
@@ -30,11 +29,6 @@ const ConversationSchema = new mongoose.Schema(
         pinnedMessage: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Message',
-            default: null,
-        },
-
-        type: {
-            type: String,
             default: null,
         },
 

@@ -7,6 +7,7 @@ export interface AppError extends Error {
 }
 
 export const errorHandler = (err: ApiErrorResponse, req: Request, res: Response, next: NextFunction) => {
+    console.log(err.message);
     const errorMessage = err.message || 'Internal Server Error';
     res.status(err.status || 500).json(errorResponse(err.status || 500, errorMessage));
 };

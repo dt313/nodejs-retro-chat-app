@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 
 import ConversationSchema from '@/models/conversation.model';
 import UserSchema from '@/models/user.model';
@@ -11,11 +11,40 @@ import { groupValidate } from '@/validation';
 import { errorResponse, successResponse } from '@/utils/response';
 
 import { senJoinGroupNotification } from '@/utils/ws-send-notification';
+import { createParticipant } from '@/helper';
+import ParticipantSchema from '@/models/participant.model';
+import { getUserIdFromAccessToken } from '@/helper/jwt';
 
 class GroupController {
     async getAllGroups(req: Request, res: Response, next: NextFunction) {
         try {
-            const groups = await ConversationSchema.find({ isGroup: true });
+            let meId = null;
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
+
+            let groups = await ConversationSchema.find({ isGroup: true });
+            const groupIds = groups.map((g) => g._id);
+
+            if (meId) {
+                const myParticipants = await ParticipantSchema.find({
+                    user: meId,
+                    conversationId: { $in: groupIds },
+                });
+
+                const myGroupIds = new Set(myParticipants.map((p) => p.conversationId.toString()));
+
+                groups = groups.map((group: any) => {
+                    return {
+                        ...(group.toObject?.() ?? group),
+                        isJoined: myGroupIds.has(group._id.toString()),
+                    };
+                });
+            }
+
             res.json(successResponse(Status.OK, 'Groups fetched successfully', groups));
         } catch (error) {
             next(error);
@@ -78,7 +107,6 @@ class GroupController {
 
             let isValidPassword = !group.isPrivate;
             if (group.isPrivate) {
-                console.log(password);
                 isValidPassword = await verifyPassword(password, group.password);
                 if (!isValidPassword) {
                     res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Group password wrong'));
@@ -86,14 +114,27 @@ class GroupController {
                 }
             }
 
-            if (isValidPassword && group.participants.includes(meIdObjectId)) {
-                res.status(Status.FORBIDDEN).json(
-                    errorResponse(Status.FORBIDDEN, 'You are already a member of this group'),
+            const isExistParticipant = await ParticipantSchema.findOne({
+                user: meId,
+                conversationId: group._id,
+            });
+
+            if (isExistParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are already in this group chat'),
                 );
                 return;
             }
 
-            group.participants.push(meIdObjectId);
+            console.log('participant ', meId, group._id);
+            const newParticipant = await createParticipant(meIdObjectId, group._id, 'member');
+
+            if (!newParticipant) {
+                next(errorResponse(Status.BAD_REQUEST, 'Create participant failed'));
+                return;
+            }
+
+            group.participants.push(newParticipant);
             await group.save();
 
             // notification to admin
@@ -104,7 +145,7 @@ class GroupController {
                 groupId: group._id.toString(),
             });
 
-            res.json(successResponse(Status.OK, 'Joined group successfully', group));
+            res.status(Status.OK).json(successResponse(Status.OK, 'Joined group successfully', group));
         } catch (error) {
             next(error);
         }
