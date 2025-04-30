@@ -12,26 +12,45 @@ import { Status } from '@/types/response';
 import { AuthRequest } from '@/types/auth-request';
 import { conversationValidate } from '@/validation';
 import { Types } from 'mongoose';
+import cloudinary from '@/configs/cloudinary';
 
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const me = req.payload?.userId;
-
-            const { name, thumbnail, password, type, description, rules, participants: participantsReq } = req.body;
+            const { name, password, type, description, rules, participants: participantsReq } = req.body;
+            let thumbnail = req.file as Express.Multer.File;
 
             // group conversation
             console.log('create conversation group');
 
             let newPassword = null;
 
-            if (thumbnail) {
-                // handle store image
-            }
-
             if (!!password) {
                 const salt = await bcrypt.genSalt(10);
                 newPassword = await bcrypt.hash(password, salt);
+            }
+
+            if (thumbnail && thumbnail.buffer) {
+                const stream = await new Promise((resolve, reject) => {
+                    cloudinary.v2.uploader
+                        .upload_stream(
+                            {
+                                folder: 'conversation-thumbnail',
+                                resource_type: 'image',
+                            },
+                            (error, result) => {
+                                if (error) {
+                                    reject(error);
+                                } else {
+                                    resolve(result);
+                                }
+                            },
+                        )
+                        .end(thumbnail.buffer);
+                });
+                thumbnail = (stream as any).secure_url;
+                console.log(thumbnail);
             }
 
             const conversation = await ConversationSchema.create({

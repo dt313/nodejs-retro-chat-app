@@ -30,6 +30,9 @@ interface Config {
     cookieDomain: string;
     cookieMaxAge: number;
     redisUrl: string;
+    cloudinaryCloudName: string;
+    cloudinaryApiKey: string;
+    cloudinaryApiSecret: string;
 }
 
 const config: Config = {
@@ -55,6 +58,9 @@ const config: Config = {
     cookieDomain: process.env.COOKIE_DOMAIN || '',
     cookieMaxAge: parseInt(process.env.COOKIE_MAX_AGE || '0') || 60000,
     redisUrl: process.env.REDIS_URL || '',
+    cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
+    cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || '',
+    cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || '',
 };
 
 export default config;
