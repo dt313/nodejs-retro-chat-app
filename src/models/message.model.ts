@@ -31,6 +31,13 @@ const MessageSchema = new mongoose.Schema(
         attachments: {
             type: [mongoose.Schema.Types.ObjectId],
             ref: 'Attachment',
+            default: [],
+        },
+
+        images: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'ImageAttachment',
+            default: null,
         },
         reactions: {
             type: [mongoose.Schema.Types.ObjectId],

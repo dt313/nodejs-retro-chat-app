@@ -1,18 +1,20 @@
 import express from 'express';
-import multer from 'multer';
 import { verifyAccessToken } from '@/helper/jwt';
 import conversationController from '@/controllers/conversation.controller';
+import { conversationThumbnailUpload } from '@/configs/multer';
 const router = express.Router();
-
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
 
 router.get('/', conversationController.getAllConversations);
 router.get('/me', verifyAccessToken, conversationController.getConversationsByMe);
-router.get('/message/:conversationId', conversationController.getMessageOfConversationById);
-router.get('/:conversationId', conversationController.getConversationById);
+router.get('/message/:conversationId', verifyAccessToken, conversationController.getMessageOfConversationById);
+router.get('/:conversationId', verifyAccessToken, conversationController.getConversationById);
 
-router.post('/group', verifyAccessToken, upload.single('thumbnail'), conversationController.createGroupConversation);
+router.post(
+    '/group',
+    verifyAccessToken,
+    conversationThumbnailUpload.single('thumbnail'),
+    conversationController.createGroupConversation,
+);
 router.get(
     '/get-or-create/:withUserId',
     verifyAccessToken,

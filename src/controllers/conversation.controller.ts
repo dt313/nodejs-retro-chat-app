@@ -13,6 +13,7 @@ import { AuthRequest } from '@/types/auth-request';
 import { conversationValidate } from '@/validation';
 import { Types } from 'mongoose';
 import cloudinary from '@/configs/cloudinary';
+import { storeImgToCloudinary } from '@/utils/cloudinary';
 
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -32,23 +33,7 @@ class ConversationController {
             }
 
             if (thumbnail && thumbnail.buffer) {
-                const stream = await new Promise((resolve, reject) => {
-                    cloudinary.v2.uploader
-                        .upload_stream(
-                            {
-                                folder: 'conversation-thumbnail',
-                                resource_type: 'image',
-                            },
-                            (error, result) => {
-                                if (error) {
-                                    reject(error);
-                                } else {
-                                    resolve(result);
-                                }
-                            },
-                        )
-                        .end(thumbnail.buffer);
-                });
+                const stream = await storeImgToCloudinary(thumbnail, 'conversation-thumbnails');
                 thumbnail = (stream as any).secure_url;
                 console.log(thumbnail);
             }
@@ -96,6 +81,7 @@ class ConversationController {
     async getConversationById(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const { conversationId } = req.params;
+            const meId = req.payload?.userId;
 
             const conversation = await ConversationSchema.findById(conversationId).populate({
                 path: 'participants',
@@ -104,6 +90,18 @@ class ConversationController {
                     select: '_id avatar username fullName',
                 },
             });
+
+            const isParticipant = await ParticipantSchema.findOne({
+                conversationId,
+                user: meId,
+            });
+
+            if (!isParticipant) {
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'You are not member of this conversation'),
+                );
+                return;
+            }
 
             if (!conversation) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
@@ -146,8 +144,7 @@ class ConversationController {
     async getMessageOfConversationById(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const { conversationId } = req.params;
-
-            console.log('conversation : ', conversationId, !conversationId);
+            const meId = req.payload?.userId;
 
             if (!conversationId) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation id is required'));
@@ -161,8 +158,22 @@ class ConversationController {
                 return;
             }
 
+            const isParticipant = await ParticipantSchema.findOne({
+                conversationId,
+                user: meId,
+            });
+
+            if (!isParticipant) {
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'You are not member of this conversation'),
+                );
+                return;
+            }
+
             const messages = await MessageSchema.find({ conversationId })
                 .populate('sender', 'fullName avatar id username')
+                .populate('attachments', 'url name type size')
+                .populate('images', 'images')
                 .sort({ createdAt: 1 });
 
             res.status(Status.OK).json(

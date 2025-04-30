@@ -26,7 +26,10 @@ class GroupController {
                 meId = await getUserIdFromAccessToken(token);
             }
 
-            let groups = await ConversationSchema.find({ isGroup: true });
+            let groups = await ConversationSchema.find({ isGroup: true, isDeleted: false }).select(
+                '-password -lastMessage -isDeleted -createdAt -__v -password -updatedAt -deletedBy',
+            );
+
             const groupIds = groups.map((g) => g._id);
 
             if (meId) {

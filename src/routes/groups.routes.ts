@@ -6,6 +6,6 @@ const router = express.Router();
 
 router.post('/join/:groupId', verifyAccessToken, groupController.joinGroup);
 router.get('/', groupController.getAllGroups);
-router.get('/:id', groupController.getGroupById);
+// router.get('/:id', verifyAccessToken, groupController.getGroupById);
 
 export default router;
