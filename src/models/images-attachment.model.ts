@@ -18,6 +18,10 @@ const ImageAttachmentSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
+    isDeleted: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const ImageAttachment = mongoose.model('ImageAttachment', ImageAttachmentSchema);

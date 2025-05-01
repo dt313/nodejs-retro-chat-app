@@ -6,13 +6,12 @@ import MessageSchema from '@/models/message.model';
 import UserSchema from '@/models/user.model';
 import ParticipantSchema from '@/models/participant.model';
 
-import { createParticipant, createParticipants } from '@/helper';
+import { createParticipant } from '@/helper';
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
 import { AuthRequest } from '@/types/auth-request';
 import { conversationValidate } from '@/validation';
 import { Types } from 'mongoose';
-import cloudinary from '@/configs/cloudinary';
 import { storeImgToCloudinary } from '@/utils/cloudinary';
 
 class ConversationController {
@@ -171,9 +170,17 @@ class ConversationController {
             }
 
             const messages = await MessageSchema.find({ conversationId })
-                .populate('sender', 'fullName avatar id username')
+                .populate('sender', 'fullName avatar username')
                 .populate('attachments', 'url name type size')
                 .populate('images', 'images')
+                .populate({
+                    path: 'replyTo',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: 'fullName firstName avatar username',
+                    },
+                })
                 .sort({ createdAt: 1 });
 
             res.status(Status.OK).json(

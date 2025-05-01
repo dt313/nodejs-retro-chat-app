@@ -15,6 +15,10 @@ const AttachmentSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
+    isDeleted: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const Attachment = mongoose.model('Attachment', AttachmentSchema);

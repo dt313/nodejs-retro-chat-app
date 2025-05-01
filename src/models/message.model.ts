@@ -22,11 +22,6 @@ const MessageSchema = new mongoose.Schema(
         },
 
         readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
-        replyTo: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Message',
-            default: null,
-        },
 
         attachments: {
             type: [mongoose.Schema.Types.ObjectId],
@@ -43,6 +38,16 @@ const MessageSchema = new mongoose.Schema(
             type: [mongoose.Schema.Types.ObjectId],
             ref: 'Reaction',
             default: [],
+        },
+
+        replyTo: {
+            type: mongoose.Schema.Types.ObjectId,
+            refPath: 'replyType',
+            default: null,
+        },
+        replyType: {
+            type: String,
+            enum: ['Message', 'Attachment', 'ImageAttachment'],
         },
 
         deletedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],

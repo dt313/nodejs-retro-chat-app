@@ -18,7 +18,7 @@ class MessageController {
         try {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
-            const { replyTo, content, isGroup } = req.body;
+            const { replyTo, replyType, content, isGroup } = req.body;
             const attachments = req.files as Express.Multer.File[]; // Cast to the correct type
             console.log('attachments', attachments);
 
@@ -98,10 +98,12 @@ class MessageController {
 
             const messageType = getMessageType({ content: !!content, attachments: attachments?.length > 0 });
             // create message in group conversation
+
             const newMessage = await MessageSchema.create({
                 conversationId,
                 sender: meIdObjectId,
                 replyTo,
+                replyType,
                 content,
                 messageType,
                 attachments: Array.from(newAttachments),
@@ -111,9 +113,17 @@ class MessageController {
             isExistConversation.lastMessage = newMessage._id;
             await isExistConversation.save();
             const populatedMessage = await newMessage.populate([
-                { path: 'sender', select: '_id fullName avatar username' },
+                { path: 'sender', select: 'fullName avatar username' },
                 { path: 'attachments', select: 'url name type size' },
                 { path: 'images', select: 'images' },
+                {
+                    path: 'replyTo',
+                    select: 'content',
+                    populate: {
+                        path: 'sender',
+                        select: 'fullName firstName avatar username',
+                    },
+                },
             ]);
 
             const participants = await ParticipantSchema.find({ conversationId }).select('user');
