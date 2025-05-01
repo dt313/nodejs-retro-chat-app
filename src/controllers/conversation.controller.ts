@@ -171,8 +171,35 @@ class ConversationController {
 
             const messages = await MessageSchema.find({ conversationId })
                 .populate('sender', 'fullName avatar username')
-                .populate('attachments', 'url name type size')
-                .populate('images', 'images')
+                .populate({
+                    path: 'attachments',
+                    select: 'url name type size reactions',
+                    populate: {
+                        path: 'reactions',
+                        populate: {
+                            path: 'user',
+                            select: 'fullName firstName avatar username',
+                        },
+                    },
+                })
+                .populate({
+                    path: 'images',
+                    select: 'images reactions',
+                    populate: {
+                        path: 'reactions',
+                        populate: {
+                            path: 'user',
+                            select: 'fullName firstName avatar username',
+                        },
+                    },
+                })
+                .populate({
+                    path: 'reactions',
+                    populate: {
+                        path: 'user',
+                        select: 'fullName firstName avatar username',
+                    },
+                })
                 .populate({
                     path: 'replyTo',
                     select: 'content sender',

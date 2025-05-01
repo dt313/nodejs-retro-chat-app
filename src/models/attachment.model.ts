@@ -15,6 +15,11 @@ const AttachmentSchema = new mongoose.Schema({
         ref: 'User',
         required: true,
     },
+    reactions: {
+        type: [mongoose.Schema.Types.ObjectId],
+        ref: 'Reaction',
+        default: [],
+    },
     isDeleted: {
         type: Boolean,
         default: false,
