@@ -53,7 +53,6 @@ function initWSS(server: Server) {
                             customClient.userId !== typingUserId &&
                             participantUserIds.has(customClient.userId)
                         ) {
-                            console.log('send', customClient);
                             customClient.send(
                                 JSON.stringify({
                                     type: data.type === 'TYPING' ? 'typing' : 'no-typing',
@@ -65,8 +64,6 @@ function initWSS(server: Server) {
                             );
                         }
                     });
-                    break;
-                case 'NO_TYPING':
                     break;
             }
         });

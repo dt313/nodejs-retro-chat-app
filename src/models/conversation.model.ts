@@ -22,10 +22,28 @@ const ConversationSchema = new mongoose.Schema(
         },
 
         lastMessage: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'Message',
-            default: null,
+            content: { type: String, default: '' },
+            type: {
+                type: String,
+                enum: [
+                    'text',
+                    'file',
+                    'image',
+                    'file-image',
+                    'text-file',
+                    'text-image',
+                    'text-image-file',
+                    'reaction',
+                    'delete',
+                    'null',
+                ],
+                default: 'null',
+            },
+            sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+            readedBy: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+            sentAt: { type: Date, default: Date.now },
         },
+
         pinnedMessage: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Message',

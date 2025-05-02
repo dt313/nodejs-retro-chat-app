@@ -21,4 +21,6 @@ router.get(
     conversationController.getOrCreateConversationWithSingleUser,
 ); // only 1-1
 
+router.get('/read-last-message/:conversationId', verifyAccessToken, conversationController.readLastMessage); // only 1-1
+
 export default router;

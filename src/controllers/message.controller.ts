@@ -101,7 +101,16 @@ class MessageController {
                 }
             }
 
-            const messageType = getMessageType({ content: !!content, attachments: attachments?.length > 0 });
+            const messageType = getMessageType({
+                content: !!content,
+                file: newAttachments?.size > 0,
+                image: !!newImages,
+            });
+
+            if (!messageType) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message type error'));
+                return;
+            }
             // create message in group conversation
 
             const newMessage = await MessageSchema.create({
@@ -115,8 +124,33 @@ class MessageController {
                 images: newImages,
             });
 
-            isExistConversation.lastMessage = newMessage._id;
-            await isExistConversation.save();
+            isExistConversation.lastMessage = {
+                content: newMessage.content || '',
+                type: messageType || 'text',
+                sender: meIdObjectId,
+                sentAt: new Date(),
+                readedBy: [new Types.ObjectId(meId)],
+            };
+
+            const savedConversation = await isExistConversation.save();
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+            ]);
             const populatedMessage = await newMessage.populate([
                 { path: 'sender', select: 'fullName avatar username' },
                 { path: 'attachments', select: 'url name type size' },
@@ -150,6 +184,23 @@ class MessageController {
                                 data: {
                                     message: populatedMessage,
                                     conversationId,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            // ws send last message to all members in group
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'last-conversation',
+                                data: {
+                                    conversation: populatedConversation,
                                 },
                             }),
                         );
@@ -217,6 +268,34 @@ class MessageController {
                 return;
             }
 
+            isExistConversation.lastMessage = {
+                content: '',
+                type: 'reaction',
+                sender: new Types.ObjectId(meId),
+                sentAt: new Date(),
+                readedBy: [new Types.ObjectId(meId)],
+            };
+
+            const savedConversation = await isExistConversation.save();
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+            ]);
+
             const isExistReaction = await ReactionSchema.findOne({
                 user: meId,
                 messageId: messageId,
@@ -267,6 +346,23 @@ class MessageController {
                                 data: {
                                     reaction: reactionData,
                                     messageId,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            // ws send last message to all members in group
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'last-conversation',
+                                data: {
+                                    conversation: populatedConversation,
                                 },
                             }),
                         );

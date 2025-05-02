@@ -132,7 +132,11 @@ class ConversationController {
                         select: '_id avatar username fullName',
                     },
                 })
-                .populate('lastMessage', 'content createdAt');
+                .populate({
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                })
+                .sort({ 'lastMessage.sentAt': -1 });
 
             res.json(successResponse(Status.OK, 'Get conversation by id successfully', conversations || []));
         } catch (error) {
@@ -321,7 +325,44 @@ class ConversationController {
             }
         } catch (error) {
             next(error);
-        } finally {
+        }
+    }
+
+    async readLastMessage(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId: isExistConversation });
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not members in this conversation'),
+                );
+                return;
+            }
+
+            const lastMessageReadUser = isExistConversation.lastMessage?.readedBy;
+
+            const isReadUser = lastMessageReadUser?.some((u) => u.toString() === meId);
+
+            if (isReadUser) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are already read this message'),
+                );
+                return;
+            }
+
+            isExistConversation.lastMessage?.readedBy.push(new Types.ObjectId(meId));
+            await isExistConversation.save();
+            res.status(Status.OK).json(successResponse(Status.OK, 'Read last message successfully', true));
+        } catch (error) {
+            next(error);
         }
     }
 }
