@@ -12,7 +12,7 @@ class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const userId = req.payload?.userId;
-            const user = await UserSchema.findById(userId);
+            const user = await UserSchema.findById(userId).select('-password');
             if (user) {
                 res.json(user);
             } else {
@@ -106,6 +106,30 @@ class UserController {
             } else {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
             }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getFriends(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+
+            const isExistUser = await UserSchema.findById(meId);
+            if (!isExistUser) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                return;
+            }
+
+            const friendship = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });
+            const friendIds = friendship.map((friend) =>
+                friend.user1.toString() === meId ? friend.user2.toString() : friend.user1.toString(),
+            );
+            const friends = await UserSchema.find({ _id: { $in: friendIds } }).select('avatar fullName username');
+
+            console.log('friends', friends);
+            res.status(Status.OK).json(successResponse(Status.OK, 'Friends fetched successfully', friends));
+            return;
         } catch (error) {
             next(error);
         }

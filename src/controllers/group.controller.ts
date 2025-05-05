@@ -153,5 +153,26 @@ class GroupController {
             next(error);
         }
     }
+
+    async getInvitationUsers(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { groupId } = req.params;
+
+            const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
+            if (!isGroupExist) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                return;
+            }
+
+            const participants = await ParticipantSchema.find({ conversationId: groupId });
+            const participantIds = participants.map((p) => p.user.toString());
+
+            const users = await UserSchema.find({ _id: { $nin: participantIds } }).select('avatar fullName username');
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Invitation users fetched successfully', users));
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 export default new GroupController();

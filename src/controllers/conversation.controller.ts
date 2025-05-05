@@ -86,7 +86,7 @@ class ConversationController {
                 path: 'participants',
                 populate: {
                     path: 'user',
-                    select: '_id avatar username fullName',
+                    select: '_id avatar username fullName email',
                 },
             });
 
