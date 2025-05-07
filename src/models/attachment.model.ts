@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
 const AttachmentSchema = new mongoose.Schema({
-    url: { type: String, required: true, require: true },
+    url: { type: String, required: true },
     name: { type: String, required: true },
     type: { type: String, enum: ['file'], required: true },
     size: { type: Number, required: true },

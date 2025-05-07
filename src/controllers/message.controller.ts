@@ -1,9 +1,10 @@
-import { getMessageType } from '@/helper';
+import { createParticipant, getMessageType } from '@/helper';
 import ConversationSchema from '@/models/conversation.model';
 import AttachmentSchema from '@/models/attachment.model';
 import ImageAttachmentSchema from '@/models/images-attachment.model';
 import MessageSchema from '@/models/message.model';
 import ReactionSchema from '@/models/reaction.model';
+import UserSchema from '@/models/user.model';
 
 import { AuthRequest } from '@/types/auth-request';
 import { Status } from '@/types/response';
@@ -15,7 +16,7 @@ import CustomWebSocket from '@/types/web-socket';
 import ParticipantSchema from '@/models/participant.model';
 import { storeFileToCloudinary, storeImgToCloudinary } from '@/utils/cloudinary';
 import { REACTION_MESSAGE } from '@/configs/types';
-import { reactionValidate } from '@/validation';
+import { messageValidate, reactionValidate } from '@/validation';
 import { ReactionMessageType, reactionModelMap } from '@/utils/model-map';
 
 class MessageController {
@@ -448,5 +449,241 @@ class MessageController {
             next(error);
         }
     }
+
+    async forwardMessage(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { messageId } = req.params;
+            const { friendId, messageType } = req.body;
+
+            const result = messageValidate.forwardMessage.safeParse({
+                meId,
+                messageId,
+                friendId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation error', result.error),
+                );
+                return;
+            }
+
+            const isExistFriend = await UserSchema.findById(friendId);
+            if (!isExistFriend) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend not found'));
+                return;
+            }
+
+            // find conversation between me and friend by participant of me and friend
+            const conversation = await ConversationSchema.aggregate([
+                { $match: { isGroup: false, isDeleted: false } },
+                {
+                    $lookup: {
+                        from: 'participants',
+                        localField: '_id',
+                        foreignField: 'conversationId',
+                        as: 'members',
+                    },
+                },
+                {
+                    $addFields: {
+                        memberIds: {
+                            $map: {
+                                input: '$members',
+                                as: 'm',
+                                in: '$$m.user',
+                            },
+                        },
+                    },
+                },
+                {
+                    $match: {
+                        memberIds: { $all: [new Types.ObjectId(meId), new Types.ObjectId(friendId)] },
+                        $expr: { $eq: [{ $size: '$memberIds' }, 2] },
+                    },
+                },
+            ]);
+
+            if (conversation.length > 1) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Failed to get or create conversation'),
+                );
+                return;
+            }
+
+            let newConversation = null;
+            if (conversation.length === 1) {
+                newConversation = conversation[0];
+            } else {
+                // create conversation 1-1
+                newConversation = await ConversationSchema.create({
+                    createdBy: meId,
+                });
+
+                // create participants
+                const meParticipant = await createParticipant(meId, newConversation._id, 'member');
+                const userParticipant = await createParticipant(friendId, newConversation._id, 'member');
+
+                if (!meParticipant || !userParticipant) {
+                    res.status(Status.BAD_REQUEST).json(
+                        errorResponse(Status.BAD_REQUEST, 'Failed to create participant'),
+                    );
+                    return;
+                }
+
+                newConversation.participants.push(meParticipant);
+                newConversation.participants.push(userParticipant);
+                await newConversation.save();
+            }
+
+            let newAttachments: any[] = [];
+
+            if (messageType === 'file') {
+                const isAttachment = await AttachmentSchema.findById(messageId);
+                if (isAttachment) {
+                    newAttachments.push(isAttachment);
+                }
+            }
+
+            let newImageAttachmentId = null;
+            if (messageType === 'image') {
+                const oldImage = await ImageAttachmentSchema.findById(messageId);
+                console.log('oldImage', oldImage);
+
+                if (oldImage) {
+                    const newImageAttachment = await ImageAttachmentSchema.create({
+                        images: oldImage.images,
+                        conversationId: newConversation._id,
+                        sender: meId,
+                        reactions: [],
+                    });
+
+                    console.log('newImageAttachment', newImageAttachment);
+                    newImageAttachmentId = newImageAttachment._id;
+                }
+            }
+
+            let newContent = '';
+            if (messageType === 'text') {
+                const isExistMessage = await MessageSchema.findById(messageId);
+                newContent = isExistMessage?.content || '';
+            }
+
+            // Tạo message mới
+            const forwardedMessage = await MessageSchema.create({
+                conversationId: newConversation._id,
+                sender: meId,
+                content: newContent,
+                messageType: getMessageType({
+                    content: !!newContent,
+                    file: newAttachments.length > 0,
+                    image: !!newImageAttachmentId,
+                }),
+                attachments: newAttachments,
+                images: newImageAttachmentId,
+                isForwarded: true,
+            });
+
+            console.log('forwardedMessage', forwardedMessage);
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Forward message successfully', forwardedMessage));
+
+            const participants = await ParticipantSchema.find({ conversationId: newConversation._id }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+            // ws send message to all members in group
+
+            const populatedMessage = await forwardedMessage.populate([
+                { path: 'sender', select: 'fullName avatar username' },
+                { path: 'attachments', select: 'url name type size' },
+                { path: 'images', select: 'images' },
+                {
+                    path: 'replyTo',
+                    select: 'content',
+                    populate: {
+                        path: 'sender',
+                        select: 'fullName firstName avatar username',
+                    },
+                },
+            ]);
+            const socket = ws.getWSS();
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (
+                        customClient.isAuthenticated &&
+                        customClient.userId !== meId &&
+                        participantUserIds.has(customClient.userId)
+                    ) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'message',
+                                data: {
+                                    message: populatedMessage,
+                                    conversationId: newConversation._id,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            newConversation.lastMessage = {
+                content: populatedMessage.content || '',
+                type: populatedMessage.messageType || 'text',
+                sender: new Types.ObjectId(meId),
+                sentAt: new Date(),
+                readedBy: [new Types.ObjectId(meId)],
+            };
+
+            const savedConversation = await ConversationSchema.findByIdAndUpdate(
+                newConversation._id,
+                { lastMessage: newConversation.lastMessage },
+                { new: true },
+            );
+
+            if (!savedConversation) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                return;
+            }
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+            ]);
+
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'last-conversation',
+                                data: {
+                                    conversation: populatedConversation,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
 }
+
 export default new MessageController();

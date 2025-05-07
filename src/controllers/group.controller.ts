@@ -3,7 +3,8 @@ import mongoose, { Types } from 'mongoose';
 
 import ConversationSchema from '@/models/conversation.model';
 import UserSchema from '@/models/user.model';
-
+import ParticipantSchema from '@/models/participant.model';
+import GroupInvitationSchema from '@/models/group-invitation.model';
 import { Status } from '@/types/response';
 import { AuthRequest } from '@/types/auth-request';
 import { verifyPassword } from '@/helper';
@@ -12,7 +13,6 @@ import { errorResponse, successResponse } from '@/utils/response';
 
 import { senJoinGroupNotification } from '@/utils/ws-send-notification';
 import { createParticipant } from '@/helper';
-import ParticipantSchema from '@/models/participant.model';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
 
 class GroupController {
@@ -157,6 +157,12 @@ class GroupController {
     async getInvitationUsers(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const { groupId } = req.params;
+            const meId = req.payload?.userId;
+
+            if (!meId) {
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                return;
+            }
 
             const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
             if (!isGroupExist) {
@@ -167,9 +173,37 @@ class GroupController {
             const participants = await ParticipantSchema.find({ conversationId: groupId });
             const participantIds = participants.map((p) => p.user.toString());
 
+            const isParticipant = participantIds.includes(meId);
+
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You are not in this group'));
+                return;
+            }
+
             const users = await UserSchema.find({ _id: { $nin: participantIds } }).select('avatar fullName username');
 
-            res.status(Status.OK).json(successResponse(Status.OK, 'Invitation users fetched successfully', users));
+            // Get all pending invitations for this group
+            const pendingInvitations = await GroupInvitationSchema.find({
+                conversationId: groupId,
+                status: 'pending',
+                sender: meId,
+            });
+
+            // Add invitationRequested field to each user
+            const usersWithInvitationStatus = users.map((user) => {
+                const hasInvitation = pendingInvitations.some(
+                    (invite) => invite.invitedTo.toString() === user._id.toString(),
+                );
+
+                return {
+                    ...user.toObject(),
+                    isRequested: hasInvitation,
+                };
+            });
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Invitation users fetched successfully', usersWithInvitationStatus),
+            );
         } catch (error) {
             next(error);
         }

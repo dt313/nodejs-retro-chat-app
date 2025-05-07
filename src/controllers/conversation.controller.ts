@@ -18,7 +18,7 @@ class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const me = req.payload?.userId;
-            const { name, password, type, description, rules, participants: participantsReq } = req.body;
+            const { name, password, type, description, rules } = req.body;
             let thumbnail = req.file as Express.Multer.File;
 
             // group conversation
@@ -71,6 +71,74 @@ class ConversationController {
         try {
             const conversations = await ConversationSchema.find({});
             res.json(successResponse(Status.OK, 'Get all conversations successfully', conversations));
+            return;
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getAllConversationsByName(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { name } = req.query || '';
+            const searchName = typeof name === 'string' ? name : '';
+
+            const participants = await ParticipantSchema.find({ user: meId });
+            const joinedConversationIds = participants.map((p) => p.conversationId);
+
+            console.log('name', name, joinedConversationIds);
+
+            // Get all conversations first
+            const baseQuery = {
+                isDeleted: false,
+                $or: [{ createdBy: meId }, { _id: { $in: joinedConversationIds } }],
+            };
+
+            const conversations = await ConversationSchema.find(baseQuery)
+                .populate('createdBy', '_id avatar username fullName')
+                .populate({
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                })
+                .populate({
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                })
+                .sort({ 'lastMessage.sentAt': -1 });
+
+            if (searchName) {
+                // Filter conversations based on name search
+                const filteredConversations = conversations.filter((conv) => {
+                    // Match group name for group conversations
+                    if (conv.isGroup && conv.name) {
+                        if (conv.name.toLowerCase().includes(searchName.toLowerCase())) {
+                            return true;
+                        }
+                    }
+                    // Match participant name for 1-1 conversations
+                    else if (!conv.isGroup) {
+                        const otherParticipant = conv.participants.find(
+                            (p: any) => p.user._id.toString() !== meId?.toString(),
+                        ) as any;
+                        if (otherParticipant) {
+                            const fullName = otherParticipant.user.fullName.toLowerCase();
+                            const username = otherParticipant.user.username.toLowerCase();
+                            const searchTerm = searchName.toLowerCase();
+                            return fullName.includes(searchTerm) || username.includes(searchTerm);
+                        }
+                    }
+                    return false;
+                });
+
+                res.json(
+                    successResponse(Status.OK, 'Get all conversations by name successfully', filteredConversations),
+                );
+            } else {
+                res.json(successResponse(Status.OK, 'Get all conversations by name successfully', conversations));
+            }
             return;
         } catch (error) {
             next(error);
@@ -361,6 +429,45 @@ class ConversationController {
             isExistConversation.lastMessage?.readedBy.push(new Types.ObjectId(meId));
             await isExistConversation.save();
             res.status(Status.OK).json(successResponse(Status.OK, 'Read last message successfully', true));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async searchMessageOfConversation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+            const { query } = req.query;
+
+            if (!query) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Query is required'));
+                return;
+            }
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId: isExistConversation });
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not members in this conversation'),
+                );
+                return;
+            }
+
+            const messages = await MessageSchema.find({
+                conversationId,
+                messageType: { $in: ['text', 'text-file', 'text-image', 'text-image-file'] },
+                content: { $regex: query, $options: 'i' },
+            })
+                .populate('sender', '_id avatar username fullName')
+                .sort({ createdAt: -1 });
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Search message successfully', messages));
         } catch (error) {
             next(error);
         }

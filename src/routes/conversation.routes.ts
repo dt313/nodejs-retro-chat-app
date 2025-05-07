@@ -7,8 +7,9 @@ const router = express.Router();
 router.get('/', conversationController.getAllConversations);
 router.get('/me', verifyAccessToken, conversationController.getConversationsByMe);
 router.get('/message/:conversationId', verifyAccessToken, conversationController.getMessageOfConversationById);
+router.get('/message/:conversationId/search', verifyAccessToken, conversationController.searchMessageOfConversation);
+router.get('/search', verifyAccessToken, conversationController.getAllConversationsByName);
 router.get('/:conversationId', verifyAccessToken, conversationController.getConversationById);
-
 router.post(
     '/group',
     verifyAccessToken,
