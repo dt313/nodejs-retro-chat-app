@@ -327,7 +327,7 @@ class MessageController {
 
             res.status(Status.OK).json(successResponse(Status.OK, 'React successfully', reactionData));
 
-            // ws send notification to all members in group
+            // ws send reaction to all members in group
             const participants = await ParticipantSchema.find({ conversationId: isExistConversation._id }).select(
                 'user',
             );
@@ -680,6 +680,106 @@ class MessageController {
                     }
                 });
             }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async deleteMessage(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { type, messageId } = req.params;
+
+            const getType = (type: string) => {
+                if (type === 'text') {
+                    return MessageSchema;
+                }
+
+                if (type === 'file') {
+                    return AttachmentSchema;
+                }
+
+                if (type === 'image') {
+                    return ImageAttachmentSchema;
+                }
+            };
+
+            const Model = getType(type) as Model<any>;
+
+            const isExistMessage = await Model.findById(messageId);
+            if (!isExistMessage) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Message not found'));
+                return;
+            }
+
+            if (isExistMessage.sender.toString() !== meId) {
+                res.status(Status.UNAUTHORIZED).json(
+                    errorResponse(Status.UNAUTHORIZED, 'You are not the sender of this message'),
+                );
+                return;
+            }
+
+            const isExistConversation = await ConversationSchema.findById(isExistMessage.conversationId);
+            if (!isExistConversation) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                return;
+            }
+
+            isExistMessage.isDeleted = true;
+            await isExistMessage.save();
+
+            isExistConversation.lastMessage = {
+                content: '',
+                type: 'delete',
+                sender: new Types.ObjectId(meId),
+                sentAt: new Date(),
+                readedBy: [new Types.ObjectId(meId)],
+            };
+
+            const savedConversation = await isExistConversation.save();
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+            ]);
+            // send notification to all members in conversation
+            const participants = await ParticipantSchema.find({ conversationId: isExistConversation._id }).select(
+                'user',
+            );
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            const socket = ws.getWSS();
+            // ws send last message to all members in group
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'last-conversation',
+                                data: {
+                                    conversation: populatedConversation,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Message deleted successfully', isExistMessage));
         } catch (error) {
             next(error);
         }

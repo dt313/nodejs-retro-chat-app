@@ -16,6 +16,10 @@ router.post(
     conversationThumbnailUpload.single('thumbnail'),
     conversationController.createGroupConversation,
 );
+
+router.post('/group/:conversationId/delete-user', verifyAccessToken, conversationController.deleteUserFromConversation);
+router.post('/group/:conversationId/change-role', verifyAccessToken, conversationController.changeRoleParticipant);
+
 router.get(
     '/get-or-create/:withUserId',
     verifyAccessToken,

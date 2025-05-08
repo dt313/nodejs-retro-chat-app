@@ -5,6 +5,7 @@ import ConversationSchema from '@/models/conversation.model';
 import MessageSchema from '@/models/message.model';
 import UserSchema from '@/models/user.model';
 import ParticipantSchema from '@/models/participant.model';
+import NotificationSchema from '@/models/notification.model';
 
 import { createParticipant } from '@/helper';
 import { errorResponse, successResponse } from '@/utils/response';
@@ -13,6 +14,8 @@ import { AuthRequest } from '@/types/auth-request';
 import { conversationValidate } from '@/validation';
 import { Types } from 'mongoose';
 import { storeImgToCloudinary } from '@/utils/cloudinary';
+import ws from '@/configs/ws';
+import CustomWebSocket from '@/types/web-socket';
 
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -85,8 +88,6 @@ class ConversationController {
 
             const participants = await ParticipantSchema.find({ user: meId });
             const joinedConversationIds = participants.map((p) => p.conversationId);
-
-            console.log('name', name, joinedConversationIds);
 
             // Get all conversations first
             const baseQuery = {
@@ -217,6 +218,25 @@ class ConversationController {
             const { conversationId } = req.params;
             const meId = req.payload?.userId;
 
+            // pagination
+            const { before, after, limit = 30 } = req.query;
+
+            interface MessageFilter {
+                conversationId: string;
+                createdAt?: { $lt?: Date; $gt?: Date };
+            }
+
+            const filter: MessageFilter = { conversationId };
+
+            if (before && typeof before === 'string') {
+                filter.createdAt = { $lt: new Date(before) };
+            }
+
+            if (after && typeof after === 'string') {
+                filter.createdAt = { $gt: new Date(after) };
+            }
+
+            console.log('filter', filter);
             if (!conversationId) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation id is required'));
                 return;
@@ -241,11 +261,11 @@ class ConversationController {
                 return;
             }
 
-            const messages = await MessageSchema.find({ conversationId })
+            const messages = await MessageSchema.find(filter)
                 .populate('sender', 'fullName avatar username')
                 .populate({
                     path: 'attachments',
-                    select: 'url name type size reactions',
+                    select: 'url name type size reactions isDeleted',
                     populate: {
                         path: 'reactions',
                         populate: {
@@ -256,7 +276,7 @@ class ConversationController {
                 })
                 .populate({
                     path: 'images',
-                    select: 'images reactions',
+                    select: 'images reactions isDeleted',
                     populate: {
                         path: 'reactions',
                         populate: {
@@ -280,7 +300,8 @@ class ConversationController {
                         select: 'fullName firstName avatar username',
                     },
                 })
-                .sort({ createdAt: 1 });
+                .sort({ createdAt: -1 })
+                .limit(Number(limit));
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Get message of conversation successfully', messages),
@@ -468,6 +489,200 @@ class ConversationController {
                 .sort({ createdAt: -1 });
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Search message successfully', messages));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async deleteUserFromConversation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+            const { userId } = req.body;
+
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isGroup: true,
+            });
+
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({
+                user: meId,
+                conversationId: isExistConversation,
+                role: { $in: ['creator', 'admin'] },
+            }).populate('user', '_id avatar username fullName');
+
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not creator or admin in this conversation'),
+                );
+                return;
+            }
+
+            const isDeleteParticipant = await ParticipantSchema.findOne({
+                user: userId,
+                conversationId: isExistConversation,
+                role: { $ne: 'creator' },
+            }).populate('user', '_id avatar username fullName');
+
+            console.log('isDeleteParticipant', isDeleteParticipant);
+
+            if (!isDeleteParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'User is not member of this conversation'),
+                );
+                return;
+            }
+
+            if (isDeleteParticipant.role === 'creator' && isParticipant.role === 'creator') {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Permission denied'));
+                return;
+            }
+
+            if (
+                isParticipant.role === 'admin' &&
+                (isDeleteParticipant.role === 'admin' || isDeleteParticipant.role === 'creator')
+            ) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Permission denied'));
+                return;
+            }
+
+            if (isParticipant.user._id.toString() === isDeleteParticipant.user._id.toString()) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You cannot kick yourself'));
+                return;
+            }
+
+            await isDeleteParticipant.deleteOne();
+
+            isExistConversation.participants = isExistConversation.participants.filter((p) => p.toString() !== userId);
+            await isExistConversation.save();
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Delete user from conversation successfully', isDeleteParticipant),
+            );
+
+            const notification = await NotificationSchema.create({
+                user: userId,
+                type: 'remove_from_conversation',
+                group: isExistConversation._id,
+                sender: meId,
+            });
+
+            const populatedNotification = await NotificationSchema.findOne({
+                _id: notification._id,
+            })
+                .populate('sender', 'fullName avatar id username')
+                .populate('user', 'fullName avatar id username')
+                .populate('group', 'id name thumbnail');
+
+            // send notification to user that they have been removed from the conversation
+            const socket = ws.getWSS();
+
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && customClient.userId === userId) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'notification',
+                                data: {
+                                    notification: populatedNotification,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async changeRoleParticipant(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+            const { userId, role } = req.body;
+
+            if (!userId || !role) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User id and role are required'));
+                return;
+            }
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({
+                user: meId,
+                conversationId: isExistConversation,
+                role: 'creator',
+            });
+
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not creator in this conversation'),
+                );
+                return;
+            }
+
+            const isChangeRoleParticipant = await ParticipantSchema.findOne({
+                user: userId,
+                conversationId: isExistConversation,
+            });
+
+            if (!isChangeRoleParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'User is not member of this conversation'),
+                );
+                return;
+            }
+
+            isChangeRoleParticipant.role = role;
+            await isChangeRoleParticipant.save();
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Change role participant successfully', isChangeRoleParticipant),
+            );
+
+            const notification = await NotificationSchema.create({
+                user: userId,
+                type: role === 'admin' ? 'change_admin_role' : 'change_member_role',
+                group: isExistConversation._id,
+                sender: meId,
+            });
+
+            const populatedNotification = await NotificationSchema.findOne({
+                _id: notification._id,
+            })
+                .populate('sender', 'fullName avatar id username')
+                .populate('user', 'fullName avatar id username')
+                .populate('group', 'id name thumbnail');
+
+            // send notification to user that they have been removed from the conversation
+            const socket = ws.getWSS();
+
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && customClient.userId === userId) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'notification',
+                                data: {
+                                    notification: populatedNotification,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
         } catch (error) {
             next(error);
         }

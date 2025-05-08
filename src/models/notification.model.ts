@@ -19,7 +19,16 @@ const NotificationSchema = new mongoose.Schema(
         },
         type: {
             type: String,
-            enum: ['friend_request', 'friend_request_accepted', 'group_invitation', 'group_joined', 'message'],
+            enum: [
+                'friend_request',
+                'friend_request_accepted',
+                'group_invitation',
+                'group_joined',
+                'message',
+                'remove_from_conversation',
+                'change_admin_role',
+                'change_member_role',
+            ],
             required: true,
         },
         isRead: {

@@ -114,6 +114,15 @@ class UserController {
     async getFriends(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const meId = req.payload?.userId;
+            const { name } = req.query;
+            const query = name
+                ? {
+                      $or: [
+                          { fullName: { $regex: name, $options: 'i' } },
+                          { username: { $regex: name, $options: 'i' } },
+                      ],
+                  }
+                : {};
 
             const isExistUser = await UserSchema.findById(meId);
             if (!isExistUser) {
@@ -125,7 +134,10 @@ class UserController {
             const friendIds = friendship.map((friend) =>
                 friend.user1.toString() === meId ? friend.user2.toString() : friend.user1.toString(),
             );
-            const friends = await UserSchema.find({ _id: { $in: friendIds } }).select('avatar fullName username');
+            const friends = await UserSchema.find({
+                _id: { $in: friendIds },
+                ...query,
+            }).select('avatar fullName username');
 
             console.log('friends', friends);
             res.status(Status.OK).json(successResponse(Status.OK, 'Friends fetched successfully', friends));
