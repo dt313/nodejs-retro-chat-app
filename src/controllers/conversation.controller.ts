@@ -6,13 +6,15 @@ import MessageSchema from '@/models/message.model';
 import UserSchema from '@/models/user.model';
 import ParticipantSchema from '@/models/participant.model';
 import NotificationSchema from '@/models/notification.model';
+import AttachmentSchema from '@/models/attachment.model';
+import ImageAttachmentSchema from '@/models/images-attachment.model';
 
 import { createParticipant } from '@/helper';
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
 import { AuthRequest } from '@/types/auth-request';
 import { conversationValidate } from '@/validation';
-import { Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { storeImgToCloudinary } from '@/utils/cloudinary';
 import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
@@ -223,17 +225,17 @@ class ConversationController {
 
             interface MessageFilter {
                 conversationId: string;
-                createdAt?: { $lt?: Date; $gt?: Date };
+                createdAt?: { $lt?: string; $gt?: string };
             }
 
             const filter: MessageFilter = { conversationId };
 
             if (before && typeof before === 'string') {
-                filter.createdAt = { $lt: new Date(before) };
+                filter.createdAt = { $lt: before };
             }
 
             if (after && typeof after === 'string') {
-                filter.createdAt = { $gt: new Date(after) };
+                filter.createdAt = { $gt: after };
             }
 
             console.log('filter', filter);
@@ -260,6 +262,8 @@ class ConversationController {
                 );
                 return;
             }
+
+            console.log(before, after);
 
             const messages = await MessageSchema.find(filter)
                 .populate('sender', 'fullName avatar username')
@@ -300,8 +304,10 @@ class ConversationController {
                         select: 'fullName firstName avatar username',
                     },
                 })
-                .sort({ createdAt: -1 })
+                .sort(after ? { createdAt: 1 } : { createdAt: -1 })
                 .limit(Number(limit));
+
+            // console.log(messages);
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Get message of conversation successfully', messages),
@@ -360,8 +366,6 @@ class ConversationController {
                     },
                 },
             ]);
-
-            console.log('conversation ', conversation);
 
             if (conversation.length > 1) {
                 res.status(Status.BAD_REQUEST).json(
@@ -602,6 +606,130 @@ class ConversationController {
         }
     }
 
+    async getMessageOfConversationByMessageId(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            console.log('getMessageOfConversationByMessageId');
+            const { conversationId, messageId } = req.params;
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const schemaMap: Record<string, Model<any>> = {
+                text: MessageSchema,
+                file: AttachmentSchema,
+                image: ImageAttachmentSchema,
+            };
+
+            // find message type
+            let messageType: string | null = null;
+            let isExistMessage = null;
+
+            for (const [type, schema] of Object.entries(schemaMap)) {
+                isExistMessage = await schema.findById(messageId);
+                if (isExistMessage) {
+                    messageType = type;
+                    break;
+                }
+            }
+
+            console.log('messageType', messageType);
+
+            if (messageType === null) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                return;
+            }
+
+            let searchMessageId = null;
+            const messagePopulateOptions = [
+                { path: 'sender', select: 'fullName avatar username' },
+                {
+                    path: 'attachments',
+                    select: 'url name type size reactions isDeleted',
+                    populate: {
+                        path: 'reactions',
+                        populate: {
+                            path: 'user',
+                            select: 'fullName firstName avatar username',
+                        },
+                    },
+                },
+                {
+                    path: 'images',
+                    select: 'images reactions isDeleted',
+                    populate: {
+                        path: 'reactions',
+                        populate: {
+                            path: 'user',
+                            select: 'fullName firstName avatar username',
+                        },
+                    },
+                },
+                {
+                    path: 'reactions',
+                    populate: {
+                        path: 'user',
+                        select: 'fullName firstName avatar username',
+                    },
+                },
+                {
+                    path: 'replyTo',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: 'fullName firstName avatar username',
+                    },
+                },
+            ];
+            // find messageId if type is file or image
+            if (messageType == 'text') {
+                searchMessageId = isExistMessage._id;
+                isExistMessage = await isExistMessage.populate(messagePopulateOptions);
+            } else if (['file', 'image'].includes(messageType)) {
+                const query = messageType === 'file' ? { attachments: messageId } : { images: messageId };
+                isExistMessage = await MessageSchema.findOne(query).populate(messagePopulateOptions);
+
+                console.log('isExistMessage', isExistMessage);
+                if (isExistMessage) {
+                    searchMessageId = isExistMessage._id;
+                }
+            } else {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid type'));
+                return;
+            }
+
+            if (!searchMessageId) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                return;
+            }
+
+            //  Get 15 messages before and 15 messages after the message's createdAt timestamp
+            const beforeMessages = await MessageSchema.find({
+                conversationId,
+                createdAt: { $lt: isExistMessage.createdAt },
+            })
+                .populate(messagePopulateOptions)
+                .sort({ createdAt: -1 })
+                .limit(15);
+
+            const afterMessages = await MessageSchema.find({
+                conversationId,
+                createdAt: { $gt: isExistMessage.createdAt },
+            })
+                .populate(messagePopulateOptions)
+                .sort({ createdAt: 1 })
+                .limit(15);
+
+            const messages = [...beforeMessages.reverse(), isExistMessage, ...afterMessages];
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Search message successfully', messages));
+        } catch (error) {
+            next(error);
+        }
+    }
+
     async changeRoleParticipant(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const meId = req.payload?.userId;
@@ -683,6 +811,51 @@ class ConversationController {
                     }
                 });
             }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async leaveGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({
+                user: meId,
+                conversationId: isExistConversation,
+            });
+
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
+                );
+                return;
+            }
+
+            if (isParticipant.role === 'creator') {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are creator of this conversation'),
+                );
+                return;
+            }
+
+            await isParticipant.deleteOne();
+
+            isExistConversation.participants = isExistConversation.participants.filter(
+                (p) => p.toString() !== isParticipant._id.toString(),
+            );
+            await isExistConversation.save();
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Leave group conversation successfully', isParticipant),
+            );
         } catch (error) {
             next(error);
         }

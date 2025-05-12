@@ -15,7 +15,6 @@ import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
 import ParticipantSchema from '@/models/participant.model';
 import { storeFileToCloudinary, storeImgToCloudinary } from '@/utils/cloudinary';
-import { REACTION_MESSAGE } from '@/configs/types';
 import { messageValidate, reactionValidate } from '@/validation';
 import { ReactionMessageType, reactionModelMap } from '@/utils/model-map';
 
@@ -382,7 +381,10 @@ class MessageController {
             const meId = req.payload?.userId;
             const { reactionId } = req.params;
 
+            console.log('reactionId', reactionId);
+
             const isExistReaction = await ReactionSchema.findById(reactionId);
+            console.log('isExistReaction', isExistReaction);
             if (!isExistReaction) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Reaction not found'));
                 return;
@@ -541,8 +543,17 @@ class MessageController {
 
             if (messageType === 'file') {
                 const isAttachment = await AttachmentSchema.findById(messageId);
+                // copy attachment to new conversation
                 if (isAttachment) {
-                    newAttachments.push(isAttachment);
+                    const newAttachment = await AttachmentSchema.create({
+                        ...isAttachment.toObject(),
+                        _id: new Types.ObjectId(),
+                        conversationId: newConversation._id,
+                        sender: meId,
+                        reactions: [],
+                        isDeleted: false,
+                    });
+                    newAttachments.push(newAttachment);
                 }
             }
 
@@ -557,6 +568,7 @@ class MessageController {
                         conversationId: newConversation._id,
                         sender: meId,
                         reactions: [],
+                        isDeleted: false,
                     });
 
                     console.log('newImageAttachment', newImageAttachment);
@@ -610,11 +622,7 @@ class MessageController {
             if (socket) {
                 socket.clients.forEach((client) => {
                     const customClient = client as CustomWebSocket;
-                    if (
-                        customClient.isAuthenticated &&
-                        customClient.userId !== meId &&
-                        participantUserIds.has(customClient.userId)
-                    ) {
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
                         customClient.send(
                             JSON.stringify({
                                 type: 'message',
