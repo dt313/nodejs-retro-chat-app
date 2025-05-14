@@ -5,4 +5,14 @@ import { default as splitFullName } from './split-fullname';
 import { default as getMessageType } from './get-message-type';
 import { createParticipants } from './create-participants';
 import { createParticipant } from './create-participants';
-export { jwt, verifyPassword, generateUsername, splitFullName, createParticipant, createParticipants, getMessageType };
+import generateNumericOTP from './generateOTP';
+export {
+    jwt,
+    verifyPassword,
+    generateUsername,
+    splitFullName,
+    createParticipant,
+    createParticipants,
+    getMessageType,
+    generateNumericOTP,
+};
