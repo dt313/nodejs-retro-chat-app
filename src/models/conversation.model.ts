@@ -5,6 +5,8 @@ const ConversationSchema = new mongoose.Schema(
         isGroup: { type: Boolean, default: false },
         name: { type: String, default: null },
         thumbnail: { type: String, default: null },
+        backgroundUrl: { type: String, default: null },
+        nickname: { type: String, default: null },
         description: { type: String, default: null },
         rules: { type: String, default: null },
         createdBy: {

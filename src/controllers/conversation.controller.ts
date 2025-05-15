@@ -88,6 +88,8 @@ class ConversationController {
             const { name } = req.query || '';
             const searchName = typeof name === 'string' ? name : '';
 
+            console.log('searchName', searchName);
+
             const participants = await ParticipantSchema.find({ user: meId });
             const joinedConversationIds = participants.map((p) => p.conversationId);
 
@@ -855,6 +857,127 @@ class ConversationController {
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Leave group conversation successfully', isParticipant),
+            );
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async updateConversation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+            const { type, value } = req.body;
+            let img = req.file as Express.Multer.File;
+
+            if (!type && (!img || !value)) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Type and value are required'));
+                return;
+            }
+
+            const isExistConversation = await ConversationSchema.findById(conversationId);
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            if (isExistConversation.createdBy.toString() !== meId && isExistConversation.isGroup) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not creator of this conversation'),
+                );
+                return;
+            }
+
+            const isParticipant = await ParticipantSchema.findOne({
+                user: meId,
+                conversationId: isExistConversation,
+            });
+
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
+                );
+                return;
+            }
+
+            switch (type) {
+                case 'name':
+                    if (!isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support name'),
+                        );
+                        return;
+                    }
+                    isExistConversation.name = value;
+                    break;
+                case 'backgroundUrl':
+                    if (img) {
+                        const stream = await storeImgToCloudinary(img, 'conversation-background');
+                        isExistConversation.backgroundUrl = (stream as any).secure_url;
+                    }
+                    break;
+                case 'nickname':
+                    if (isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, 'Group conversation does not support nickname'),
+                        );
+                        return;
+                    }
+                    isExistConversation.nickname = value;
+                    break;
+                case 'description':
+                    if (!isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support description'),
+                        );
+                        return;
+                    }
+                    isExistConversation.description = value;
+                    break;
+                case 'rules':
+                    if (!isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support rules'),
+                        );
+                        return;
+                    }
+                    isExistConversation.rules = value;
+                    break;
+                case 'thumbnail':
+                    if (!isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support thumbnail'),
+                        );
+                        return;
+                    }
+
+                    if (img) {
+                        const stream = await storeImgToCloudinary(img, 'conversation-thumbnails');
+                        isExistConversation.thumbnail = (stream as any).secure_url;
+                    }
+                    break;
+                case 'password':
+                    if (!isExistConversation.isGroup) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support password'),
+                        );
+                        return;
+                    }
+
+                    const salt = await bcrypt.genSalt(10);
+                    const newPassword = await bcrypt.hash(value, salt);
+
+                    isExistConversation.password = newPassword;
+                    break;
+                default:
+                    res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid type'));
+                    return;
+            }
+
+            const updatedConversation = await isExistConversation.save();
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Update group conversation successfully', updatedConversation),
             );
         } catch (error) {
             next(error);

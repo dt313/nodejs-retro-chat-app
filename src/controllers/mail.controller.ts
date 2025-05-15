@@ -41,6 +41,7 @@ class MailController {
 
             if (isSend) {
                 redisClient.set(`${email}-otp`, otpCode, { EX: 300 });
+
                 res.status(Status.OK).json(successResponse(Status.OK, 'Email sent successfully'));
             } else {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email sent failed'));
