@@ -25,7 +25,6 @@ class MessageController {
             const { conversationId } = req.params;
             const { replyTo, replyType, content, isGroup } = req.body;
             const attachments = req.files as Express.Multer.File[]; // Cast to the correct type
-            console.log('attachments', attachments);
 
             if (isGroup === null) {
                 res.status(Status.BAD_REQUEST).json(
@@ -39,8 +38,11 @@ class MessageController {
             }
             const meIdObjectId = new Types.ObjectId(meId);
 
-            console.log('isGroup', isGroup);
-            const isExistConversation = await ConversationSchema.findOne({ _id: conversationId, isGroup });
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isGroup,
+                isDeleted: false,
+            });
 
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
@@ -48,13 +50,29 @@ class MessageController {
             }
 
             // if user is not in conversation
-            const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId });
-
+            let isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
                     errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
                 );
                 return;
+            }
+
+            console.log('isGroup', isGroup);
+
+            if (isGroup === 'false') {
+                console.log('isGroup', isGroup);
+                const participants = await ParticipantSchema.find({ conversationId, deletedAt: { $ne: null } });
+
+                console.log('participants', participants);
+
+                if (participants.length > 0) {
+                    for (const participant of participants) {
+                        participant.deletedAt = null;
+                        participant.jointAt = new Date();
+                        await participant.save();
+                    }
+                }
             }
 
             let newImages = null;
@@ -167,6 +185,7 @@ class MessageController {
 
             const participants = await ParticipantSchema.find({ conversationId }).select('user');
             const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+            console.log('participantUserIds', participantUserIds);
 
             // ws send message to all members in group
             const socket = ws.getWSS();
@@ -234,8 +253,6 @@ class MessageController {
                 return;
             }
 
-            console.log(messageType);
-
             const Model = reactionModelMap[messageType as ReactionMessageType] as Model<any>;
 
             if (!Model) {
@@ -250,7 +267,10 @@ class MessageController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(isExistMessage.conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: isExistMessage.conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation is not found'));
                 return;
@@ -266,6 +286,21 @@ class MessageController {
                     errorResponse(Status.NOT_FOUND, 'You are not member in conversation to reaction message'),
                 );
                 return;
+            }
+
+            if (isExistConversation.isGroup === false) {
+                const participants = await ParticipantSchema.find({
+                    conversationId: isExistConversation._id,
+                    deletedAt: { $ne: null },
+                });
+
+                if (participants.length > 0) {
+                    for (const participant of participants) {
+                        participant.deletedAt = null;
+                        participant.jointAt = new Date();
+                        await participant.save();
+                    }
+                }
             }
 
             isExistConversation.lastMessage = {
@@ -403,7 +438,10 @@ class MessageController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(isExistMessage.conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: isExistMessage.conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
                 return;
@@ -517,6 +555,19 @@ class MessageController {
             let newConversation = null;
             if (conversation.length === 1) {
                 newConversation = conversation[0];
+
+                const participants = await ParticipantSchema.find({
+                    conversationId: newConversation._id,
+                    deletedAt: { $ne: null },
+                });
+
+                if (participants.length > 0) {
+                    for (const participant of participants) {
+                        participant.deletedAt = null;
+                        participant.jointAt = new Date();
+                        await participant.save();
+                    }
+                }
             } else {
                 // create conversation 1-1
                 newConversation = await ConversationSchema.create({
@@ -644,8 +695,8 @@ class MessageController {
                 readedBy: [new Types.ObjectId(meId)],
             };
 
-            const savedConversation = await ConversationSchema.findByIdAndUpdate(
-                newConversation._id,
+            const savedConversation = await ConversationSchema.findOneAndUpdate(
+                { _id: newConversation._id, isDeleted: false },
                 { lastMessage: newConversation.lastMessage },
                 { new: true },
             );
@@ -727,10 +778,30 @@ class MessageController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(isExistMessage.conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: isExistMessage.conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
                 return;
+            }
+
+            if (isExistConversation.isGroup === false) {
+                if (isExistConversation.isGroup === false) {
+                    const participants = await ParticipantSchema.find({
+                        conversationId: isExistConversation._id,
+                        deletedAt: { $ne: null },
+                    });
+
+                    if (participants.length > 0) {
+                        for (const participant of participants) {
+                            participant.deletedAt = null;
+                            participant.jointAt = new Date();
+                            await participant.save();
+                        }
+                    }
+                }
             }
 
             isExistMessage.isDeleted = true;

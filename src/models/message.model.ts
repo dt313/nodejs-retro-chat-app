@@ -17,7 +17,7 @@ const MessageSchema = new mongoose.Schema(
         },
         messageType: {
             type: String,
-            enum: ['text', 'text-file', 'image', 'text-image', 'file', 'text-image-file', 'file-image'],
+            enum: ['text', 'text-file', 'image', 'text-image', 'file', 'text-image-file', 'file-image', 'notification'],
             required: true,
         },
 
@@ -52,7 +52,13 @@ const MessageSchema = new mongoose.Schema(
 
         isForwarded: { type: Boolean, default: false },
 
-        deletedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+        deletedBy: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
+                default: [],
+            },
+        ],
         isDeleted: { type: Boolean, default: false },
         deletedAt: { type: Date, default: null },
     },

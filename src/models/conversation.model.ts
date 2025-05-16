@@ -6,7 +6,6 @@ const ConversationSchema = new mongoose.Schema(
         name: { type: String, default: null },
         thumbnail: { type: String, default: null },
         backgroundUrl: { type: String, default: null },
-        nickname: { type: String, default: null },
         description: { type: String, default: null },
         rules: { type: String, default: null },
         createdBy: {
@@ -14,8 +13,6 @@ const ConversationSchema = new mongoose.Schema(
             ref: 'User',
             required: true,
         },
-
-        deleteBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
 
         participants: {
             type: [mongoose.Schema.Types.ObjectId],
@@ -50,6 +47,7 @@ const ConversationSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Message',
             default: null,
+            required: false,
         },
 
         isPrivate: {

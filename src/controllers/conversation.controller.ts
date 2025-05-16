@@ -74,7 +74,7 @@ class ConversationController {
 
     async getAllConversations(req: Request, res: Response, next: NextFunction) {
         try {
-            const conversations = await ConversationSchema.find({});
+            const conversations = await ConversationSchema.find({ isDeleted: false });
             res.json(successResponse(Status.OK, 'Get all conversations successfully', conversations));
             return;
         } catch (error) {
@@ -90,13 +90,13 @@ class ConversationController {
 
             console.log('searchName', searchName);
 
-            const participants = await ParticipantSchema.find({ user: meId });
+            const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
             const joinedConversationIds = participants.map((p) => p.conversationId);
 
             // Get all conversations first
             const baseQuery = {
                 isDeleted: false,
-                $or: [{ createdBy: meId }, { _id: { $in: joinedConversationIds } }],
+                $or: [{ _id: { $in: joinedConversationIds } }],
             };
 
             const conversations = await ConversationSchema.find(baseQuery)
@@ -155,13 +155,25 @@ class ConversationController {
             const { conversationId } = req.params;
             const meId = req.payload?.userId;
 
-            const conversation = await ConversationSchema.findById(conversationId).populate({
-                path: 'participants',
-                populate: {
-                    path: 'user',
-                    select: '_id avatar username fullName email',
-                },
-            });
+            const conversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            })
+                .populate({
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName email',
+                    },
+                })
+                .populate({
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
+                });
 
             const isParticipant = await ParticipantSchema.findOne({
                 conversationId,
@@ -189,13 +201,14 @@ class ConversationController {
         try {
             const meId = req.payload?.userId;
 
-            const participants = await ParticipantSchema.find({ user: meId });
+            const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
 
             const joinedConversationIds = participants.map((p) => p.conversationId);
+            console.log('participants', joinedConversationIds.length);
 
             const conversations = await ConversationSchema.find({
                 isDeleted: false,
-                $or: [{ createdBy: meId }, { _id: { $in: joinedConversationIds } }],
+                $or: [{ _id: { $in: joinedConversationIds } }],
             })
                 .populate('createdBy', '_id avatar username fullName')
                 .populate({
@@ -211,7 +224,9 @@ class ConversationController {
                 })
                 .sort({ 'lastMessage.sentAt': -1 });
 
-            res.json(successResponse(Status.OK, 'Get conversation by id successfully', conversations || []));
+            console.log('conversations', conversations.length);
+
+            res.json(successResponse(Status.OK, 'Get conversation by me successfully', conversations || []));
         } catch (error) {
             next(error);
         }
@@ -225,28 +240,15 @@ class ConversationController {
             // pagination
             const { before, after, limit = 30 } = req.query;
 
-            interface MessageFilter {
-                conversationId: string;
-                createdAt?: { $lt?: string; $gt?: string };
-            }
-
-            const filter: MessageFilter = { conversationId };
-
-            if (before && typeof before === 'string') {
-                filter.createdAt = { $lt: before };
-            }
-
-            if (after && typeof after === 'string') {
-                filter.createdAt = { $gt: after };
-            }
-
-            console.log('filter', filter);
             if (!conversationId) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation id is required'));
                 return;
             }
 
-            const conversation = await ConversationSchema.findById(conversationId);
+            const conversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
 
             if (!conversation) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation is not found'));
@@ -265,9 +267,26 @@ class ConversationController {
                 return;
             }
 
-            console.log(before, after);
+            interface MessageFilter {
+                conversationId: string;
+                createdAt?: { $lt?: string; $gt?: string; $gte?: string };
+            }
 
-            const messages = await MessageSchema.find(filter)
+            const filter: MessageFilter = { conversationId };
+
+            if (before && typeof before === 'string') {
+                filter.createdAt = { $lt: before };
+            }
+
+            if (after && typeof after === 'string') {
+                filter.createdAt = { $gt: after };
+            }
+
+            if (isParticipant.jointAt) {
+                filter.createdAt = { $gte: isParticipant.jointAt.toISOString() };
+            }
+
+            const messages = await MessageSchema.find({ ...filter })
                 .populate('sender', 'fullName avatar username')
                 .populate({
                     path: 'attachments',
@@ -377,6 +396,19 @@ class ConversationController {
             }
 
             if (conversation.length === 1) {
+                // check if conversation is deleted
+
+                const isParticipantDeleted = await ParticipantSchema.findOne({
+                    conversationId: conversation[0]._id,
+                    user: meId,
+                    deletedAt: { $ne: null },
+                });
+                console.log('isParticipantDeleted', isParticipantDeleted);
+                if (isParticipantDeleted) {
+                    isParticipantDeleted.deletedAt = null;
+                    isParticipantDeleted.jointAt = new Date();
+                    await isParticipantDeleted.save();
+                }
                 res.status(Status.OK).json(
                     successResponse(Status.OK, 'Get conversation 1-1 successfully', conversation[0]),
                 );
@@ -404,7 +436,10 @@ class ConversationController {
 
                 await newConversation.save();
 
-                const populatedConversation = await ConversationSchema.findById(newConversation._id)
+                const populatedConversation = await ConversationSchema.findOne({
+                    _id: newConversation._id,
+                    isDeleted: false,
+                })
                     .populate('createdBy', '_id username fullName avatar')
                     .populate({
                         path: 'participants',
@@ -428,7 +463,11 @@ class ConversationController {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
+
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -472,7 +511,10 @@ class ConversationController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -490,6 +532,7 @@ class ConversationController {
                 conversationId,
                 messageType: { $in: ['text', 'text-file', 'text-image', 'text-image-file'] },
                 content: { $regex: query, $options: 'i' },
+                createdAt: { $gte: isParticipant.jointAt.toISOString() },
             })
                 .populate('sender', '_id avatar username fullName')
                 .sort({ createdAt: -1 });
@@ -509,6 +552,7 @@ class ConversationController {
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
                 isGroup: true,
+                isDeleted: false,
             });
 
             if (!isExistConversation) {
@@ -613,7 +657,10 @@ class ConversationController {
             console.log('getMessageOfConversationByMessageId');
             const { conversationId, messageId } = req.params;
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -743,7 +790,10 @@ class ConversationController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -818,12 +868,16 @@ class ConversationController {
         }
     }
 
-    async leaveGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
+    async leaveConversation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
+
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -841,23 +895,66 @@ class ConversationController {
                 return;
             }
 
-            if (isParticipant.role === 'creator') {
-                res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are creator of this conversation'),
+            // group conversation
+            if (isExistConversation.isGroup) {
+                if (isParticipant.role === 'creator') {
+                    res.status(Status.BAD_REQUEST).json(
+                        errorResponse(Status.BAD_REQUEST, 'You are creator of this conversation'),
+                    );
+                    return;
+                }
+
+                await isParticipant.deleteOne();
+
+                isExistConversation.participants = isExistConversation.participants.filter(
+                    (p) => p.toString() !== isParticipant._id.toString(),
                 );
-                return;
+
+                await isExistConversation.save();
+
+                res.status(Status.OK).json(
+                    successResponse(Status.OK, 'Leave group conversation successfully', isParticipant),
+                );
+
+                // new message
+                const newMessage = await MessageSchema.create({
+                    conversationId: isExistConversation._id,
+                    sender: meId,
+                    content: 'group-left',
+                    messageType: 'notification',
+                });
+
+                const populatedMessage = await newMessage.populate([
+                    { path: 'sender', select: 'fullName avatar username' },
+                ]);
+
+                const participants = await ParticipantSchema.find({ conversationId: isExistConversation._id }).select(
+                    'user',
+                );
+                const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+                const socket = ws.getWSS();
+                if (socket) {
+                    socket.clients.forEach((client) => {
+                        const customClient = client as CustomWebSocket;
+                        if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                            customClient.send(
+                                JSON.stringify({
+                                    type: 'message',
+                                    data: { message: populatedMessage, conversationId: isExistConversation._id },
+                                }),
+                            );
+                        }
+                    });
+                }
+            } else {
+                isParticipant.deletedAt = new Date();
+                await isParticipant.save();
+
+                res.status(Status.OK).json(
+                    successResponse(Status.OK, 'Leave conversation successfully', isParticipant),
+                );
             }
-
-            await isParticipant.deleteOne();
-
-            isExistConversation.participants = isExistConversation.participants.filter(
-                (p) => p.toString() !== isParticipant._id.toString(),
-            );
-            await isExistConversation.save();
-
-            res.status(Status.OK).json(
-                successResponse(Status.OK, 'Leave group conversation successfully', isParticipant),
-            );
         } catch (error) {
             next(error);
         }
@@ -875,7 +972,10 @@ class ConversationController {
                 return;
             }
 
-            const isExistConversation = await ConversationSchema.findById(conversationId);
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
             if (!isExistConversation) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
                 return;
@@ -900,6 +1000,7 @@ class ConversationController {
                 return;
             }
 
+            let notificationContent = '';
             switch (type) {
                 case 'name':
                     if (!isExistConversation.isGroup) {
@@ -909,22 +1010,35 @@ class ConversationController {
                         return;
                     }
                     isExistConversation.name = value;
+                    notificationContent = `group-name-updated`;
                     break;
                 case 'backgroundUrl':
                     if (img) {
                         const stream = await storeImgToCloudinary(img, 'conversation-background');
                         isExistConversation.backgroundUrl = (stream as any).secure_url;
+                        notificationContent = `background-url-updated`;
                     }
                     break;
                 case 'nickname':
+                    console.log('nickname', value);
                     if (isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
                             errorResponse(Status.BAD_REQUEST, 'Group conversation does not support nickname'),
                         );
                         return;
                     }
-                    isExistConversation.nickname = value;
+                    const participants = await ParticipantSchema.find({
+                        conversationId: isExistConversation._id,
+                    }).populate('user', 'fullName avatar username');
+
+                    for (const p of participants) {
+                        if (p.user._id.toString() === meId) continue;
+                        p.nickname = value;
+                        await p.save();
+                    }
+                    notificationContent = `nickname-updated`;
                     break;
+
                 case 'description':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
@@ -933,6 +1047,7 @@ class ConversationController {
                         return;
                     }
                     isExistConversation.description = value;
+                    notificationContent = `group-description-updated`;
                     break;
                 case 'rules':
                     if (!isExistConversation.isGroup) {
@@ -942,6 +1057,7 @@ class ConversationController {
                         return;
                     }
                     isExistConversation.rules = value;
+                    notificationContent = `group-rules-updated`;
                     break;
                 case 'thumbnail':
                     if (!isExistConversation.isGroup) {
@@ -954,6 +1070,7 @@ class ConversationController {
                     if (img) {
                         const stream = await storeImgToCloudinary(img, 'conversation-thumbnails');
                         isExistConversation.thumbnail = (stream as any).secure_url;
+                        notificationContent = `group-thumbnail-updated`;
                     }
                     break;
                 case 'password':
@@ -968,6 +1085,21 @@ class ConversationController {
                     const newPassword = await bcrypt.hash(value, salt);
 
                     isExistConversation.password = newPassword;
+                    notificationContent = `group-password-updated`;
+                    break;
+                case 'pinnedMessage':
+                    if (value === 'null') {
+                        isExistConversation.pinnedMessage = null;
+                        notificationContent = `pinned-message-removed`;
+                        break;
+                    }
+                    const pinnedMessage = await MessageSchema.findById(value);
+                    if (!pinnedMessage) {
+                        res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                        return;
+                    }
+                    isExistConversation.pinnedMessage = pinnedMessage._id;
+                    notificationContent = `pinned-message-added`;
                     break;
                 default:
                     res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid type'));
@@ -975,14 +1107,102 @@ class ConversationController {
             }
 
             const updatedConversation = await isExistConversation.save();
+            const populatedConversation = await ConversationSchema.populate(updatedConversation, [
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName email',
+                    },
+                },
+            ]);
+
+            if (notificationContent) {
+                const newMessage = await MessageSchema.create({
+                    conversationId: isExistConversation._id,
+                    sender: meId,
+                    content: notificationContent,
+                    messageType: 'notification',
+                });
+
+                const populatedMessage = await newMessage.populate([
+                    { path: 'sender', select: 'fullName avatar username' },
+                ]);
+
+                const participants = await ParticipantSchema.find({ conversationId: isExistConversation._id }).select(
+                    'user',
+                );
+                const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+                const socket = ws.getWSS();
+                if (socket) {
+                    socket.clients.forEach((client) => {
+                        const customClient = client as CustomWebSocket;
+                        if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                            customClient.send(
+                                JSON.stringify({
+                                    type: 'message',
+                                    data: { message: populatedMessage, conversationId: isExistConversation._id },
+                                }),
+                            );
+                        }
+                    });
+                }
+            }
 
             res.status(Status.OK).json(
-                successResponse(Status.OK, 'Update group conversation successfully', updatedConversation),
+                successResponse(Status.OK, 'Update group conversation successfully', populatedConversation),
+            );
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async deleteGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { conversationId } = req.params;
+
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isDeleted: false,
+            });
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                return;
+            }
+
+            if (isExistConversation.isGroup === false) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support delete'),
+                );
+                return;
+            }
+
+            if (isExistConversation.createdBy.toString() !== meId) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are not creator of this conversation'),
+                );
+                return;
+            }
+
+            isExistConversation.isDeleted = true;
+            await isExistConversation.save();
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Delete group conversation successfully', isExistConversation),
             );
         } catch (error) {
             next(error);
         }
     }
 }
-
 export default new ConversationController();

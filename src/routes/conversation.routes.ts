@@ -13,6 +13,7 @@ router.put(
     conversationThumbnailUpload.single('value'),
     conversationController.updateConversation,
 );
+router.post('/:conversationId/leave', verifyAccessToken, conversationController.leaveConversation);
 router.get('/:conversationId', verifyAccessToken, conversationController.getConversationById);
 
 router.get('/message/:conversationId', verifyAccessToken, conversationController.getMessageOfConversationById);
@@ -31,7 +32,7 @@ router.post(
 );
 router.post('/group/:conversationId/delete-user', verifyAccessToken, conversationController.deleteUserFromConversation);
 router.post('/group/:conversationId/change-role', verifyAccessToken, conversationController.changeRoleParticipant);
-router.post('/group/:conversationId/leave', verifyAccessToken, conversationController.leaveGroupConversation);
+router.delete('/group/:conversationId', verifyAccessToken, conversationController.deleteGroupConversation);
 
 router.get(
     '/get-or-create/:withUserId',

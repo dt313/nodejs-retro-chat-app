@@ -5,6 +5,7 @@ import ConversationSchema from '@/models/conversation.model';
 import UserSchema from '@/models/user.model';
 import ParticipantSchema from '@/models/participant.model';
 import GroupInvitationSchema from '@/models/group-invitation.model';
+import MessageSchema from '@/models/message.model';
 import { Status } from '@/types/response';
 import { AuthRequest } from '@/types/auth-request';
 import { verifyPassword } from '@/helper';
@@ -14,6 +15,8 @@ import { errorResponse, successResponse } from '@/utils/response';
 import { senJoinGroupNotification } from '@/utils/ws-send-notification';
 import { createParticipant } from '@/helper';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
+import ws from '@/configs/ws';
+import CustomWebSocket from '@/types/web-socket';
 
 class GroupController {
     async getAllGroups(req: Request, res: Response, next: NextFunction) {
@@ -147,6 +150,38 @@ class GroupController {
                 type: 'group_joined',
                 groupId: group._id.toString(),
             });
+
+            await group.save();
+
+            // new message
+            const newMessage = await MessageSchema.create({
+                conversationId: group._id,
+                sender: meId,
+                content: 'group-joined',
+                messageType: 'notification',
+            });
+
+            const populatedMessage = await newMessage.populate([
+                { path: 'sender', select: 'fullName avatar username' },
+            ]);
+
+            const participants = await ParticipantSchema.find({ conversationId: group._id }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            const socket = ws.getWSS();
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'message',
+                                data: { message: populatedMessage, conversationId: group._id },
+                            }),
+                        );
+                    }
+                });
+            }
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Joined group successfully', group));
         } catch (error) {
