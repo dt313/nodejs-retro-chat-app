@@ -10,6 +10,7 @@ import { generateToken } from '@/helper/jwt';
 import { generateUsername, splitFullName, verifyPassword } from '@/helper';
 import config from '@/configs/config';
 import { AuthRequest } from '@/types/auth-request';
+import { client as redisClient } from '@/configs/redis';
 
 class AuthController {
     private readonly FACEBOOK_URL = `https://www.facebook.com/v22.0/dialog/oauth?
@@ -20,19 +21,19 @@ class AuthController {
         try {
             const result = userValidate.loginUser.safeParse(req.body);
             if (!result.success) {
-                res.send(errorResponse(Status.BAD_REQUEST, 'Login failed', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Login failed', result.error));
                 return;
             }
 
             const user = await UserSchema.findOne({ email: result.data.email });
             if (!user) {
-                res.send(errorResponse(Status.BAD_REQUEST, 'User not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User not found'));
                 return;
             }
 
             const isValidPassword = await verifyPassword(result.data.password, user.password);
             if (!isValidPassword) {
-                res.send(errorResponse(Status.UNAUTHORIZED, 'Invalid password'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Invalid password'));
                 return;
             }
 
@@ -48,7 +49,7 @@ class AuthController {
                 domain: config.cookieDomain,
             });
 
-            res.send(successResponse(Status.OK, 'Login successfully', { user, accessToken }));
+            res.status(Status.OK).json(successResponse(Status.OK, 'Login successfully', { user, accessToken }));
         } catch (error) {
             next(error);
         }
@@ -56,15 +57,23 @@ class AuthController {
 
     async register(req: Request, res: Response, next: NextFunction) {
         try {
+            const { email, fullName, password, code } = req.body;
+
             const result = userValidate.registerUser.safeParse(req.body);
             const isExistEmail = await UserSchema.findOne({ email: req.body.email });
             if (isExistEmail) {
-                res.send(errorResponse(Status.BAD_REQUEST, 'Email already exists'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email already exists'));
                 return;
             }
 
             if (!result.success) {
-                res.send(errorResponse(Status.BAD_REQUEST, 'Register failed', result.error));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Register failed', result.error));
+                return;
+            }
+
+            const otpCode = await redisClient.get(`${email}-register-otp`);
+            if (Number(otpCode) !== Number(code)) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid OTP code'));
                 return;
             }
 
@@ -77,7 +86,7 @@ class AuthController {
                 username,
             });
 
-            res.send(successResponse(Status.CREATED, 'Register successfully', { user }));
+            res.status(Status.CREATED).json(successResponse(Status.CREATED, 'Register successfully', { user }));
         } catch (error) {
             next(error);
         }
@@ -96,11 +105,11 @@ class AuthController {
 
             if (userId) {
                 const accessToken = await generateToken(userId, 'access');
-                res.send(successResponse(Status.OK, 'Refresh token successfully', { accessToken }));
+                res.status(Status.OK).json(successResponse(Status.OK, 'Refresh token successfully', { accessToken }));
                 return;
             }
 
-            res.send(errorResponse(Status.BAD_REQUEST, 'Refresh token failed'));
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Refresh token failed'));
             return;
         } catch (error) {
             next(error);

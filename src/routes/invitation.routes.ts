@@ -14,5 +14,5 @@ router.post('/user/reply', verifyAccessToken, invitationController.replyFriendRe
 router.get('/user/:userId', invitationController.getAllFriendRequestsByUserId);
 router.post('/user/:to', verifyAccessToken, invitationController.createFriendRequest);
 router.post('/user/cancel/:toUserId', verifyAccessToken, invitationController.cancelFriendRequest);
-
+router.post('/user/unfriend/:toUserId', verifyAccessToken, invitationController.unFriend);
 export default router;

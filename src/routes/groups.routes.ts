@@ -8,6 +8,6 @@ router.post('/join/:groupId', verifyAccessToken, groupController.joinGroup);
 router.get('/', groupController.getAllGroups);
 router.get('/invitation-users/:groupId', verifyAccessToken, groupController.getInvitationUsers);
 router.get('/:groupId/members', groupController.getMembersOfGroup);
-// router.get('/:id', verifyAccessToken, groupController.getGroupById);
+router.get('/:id', verifyAccessToken, groupController.getGroupById);
 
 export default router;

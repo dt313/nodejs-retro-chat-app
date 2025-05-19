@@ -7,23 +7,27 @@ import { AuthRequest } from '@/types/auth-request';
 class NotificationController {
     async getAllNotificationsByUserId(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { userId } = req.params;
-            const me = req.payload?.userId;
+            const meId = req.payload?.userId || null;
 
-            if (me !== userId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User ID and token not match'));
+            const { before } = req.query;
+
+            interface NotificationFilter {
+                user: string | null;
+                createdAt?: { $lt: Date };
             }
 
-            if (!userId) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User ID is not provided'));
-                return;
+            const filter: NotificationFilter = { user: meId };
+
+            if (before) {
+                filter.createdAt = { $lt: new Date(before as string) };
             }
 
-            const notifications = await NotificationSchema.find({ user: userId })
+            const notifications = await NotificationSchema.find(filter)
                 .populate('sender', 'fullName avatar _id username')
                 .populate('user', 'fullName avatar _id username')
                 .populate('group', '_id name thumbnail')
-                .sort({ createdAt: -1 });
+                .sort({ createdAt: -1 })
+                .limit(10);
 
             res.json(successResponse(Status.OK, 'Get all notifications successfully', notifications));
         } catch (error) {

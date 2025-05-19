@@ -272,19 +272,17 @@ class ConversationController {
                 createdAt?: { $lt?: string; $gt?: string; $gte?: string };
             }
 
-            const filter: MessageFilter = { conversationId };
+            const filter: MessageFilter = { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
 
             if (before && typeof before === 'string') {
-                filter.createdAt = { $lt: before };
+                filter.createdAt = { $lt: before, $gte: isParticipant.jointAt.toISOString() };
             }
 
             if (after && typeof after === 'string') {
-                filter.createdAt = { $gt: after };
+                filter.createdAt = { $gt: after, $gte: isParticipant.jointAt.toISOString() };
             }
 
-            if (isParticipant.jointAt) {
-                filter.createdAt = { $gte: isParticipant.jointAt.toISOString() };
-            }
+            console.log(filter);
 
             const messages = await MessageSchema.find({ ...filter })
                 .populate('sender', 'fullName avatar username')
@@ -967,6 +965,9 @@ class ConversationController {
             const { type, value } = req.body;
             let img = req.file as Express.Multer.File;
 
+            console.log('type', type);
+            console.log('value', value);
+
             if (!type && (!img || !value)) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Type and value are required'));
                 return;
@@ -1085,8 +1086,10 @@ class ConversationController {
                     const newPassword = await bcrypt.hash(value, salt);
 
                     isExistConversation.password = newPassword;
+                    isExistConversation.isPrivate = true;
                     notificationContent = `group-password-updated`;
                     break;
+
                 case 'pinnedMessage':
                     if (value === 'null') {
                         isExistConversation.pinnedMessage = null;

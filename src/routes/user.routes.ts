@@ -9,4 +9,5 @@ router.get('/me', verifyAccessToken, userController.getInformation);
 router.get('/friends', verifyAccessToken, userController.getFriends);
 router.get('/:id', userController.getUserById);
 router.get('/username/:username', userController.getUserByUsername);
+router.post('/reset-password', userController.resetPassword);
 export default router;

@@ -88,10 +88,12 @@ class MessageController {
                     for (const image of images) {
                         const stream = await storeImgToCloudinary(image, 'conversation-images');
                         const imageUrl = (stream as any).secure_url;
+                        const fileName = (stream as any).public_id.split('/').pop();
+                        console.log('fileName', fileName);
                         imageUrls.add({
                             url: imageUrl,
                             size: image.size,
-                            name: image.originalname,
+                            name: fileName,
                         });
                     }
 
@@ -106,9 +108,13 @@ class MessageController {
                     for (const file of files) {
                         const stream = await storeFileToCloudinary(file, 'conversation-files');
                         const fileUrl = (stream as any).secure_url;
+                        const fileName = (stream as any).public_id.split('/').pop();
+
+                        console.log('fileName', fileName);
+
                         const newAttachment = await AttachmentSchema.create({
                             url: fileUrl,
-                            name: file.originalname,
+                            name: fileName,
                             type: 'file',
                             size: file.size,
                             conversationId,

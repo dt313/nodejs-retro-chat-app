@@ -25,13 +25,17 @@ class GroupController {
             const authHeader = req.headers['authorization'];
             const token = authHeader?.split(' ')[1];
 
+            const { q } = req.query;
+
             if (token) {
                 meId = await getUserIdFromAccessToken(token);
             }
 
-            let groups = await ConversationSchema.find({ isGroup: true, isDeleted: false }).select(
-                '-password -lastMessage -isDeleted -createdAt -__v -password -updatedAt -deletedBy',
-            );
+            let groups = await ConversationSchema.find({
+                isGroup: true,
+                isDeleted: false,
+                $or: [{ name: { $regex: q, $options: 'i' } }],
+            }).select('-password -lastMessage -isDeleted -createdAt -__v -password -updatedAt -deletedBy');
 
             const groupIds = groups.map((g) => g._id);
 
@@ -60,13 +64,41 @@ class GroupController {
     async getGroupById(req: Request, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
-            const group = await ConversationSchema.findOne({ _id: id, isGroup: true });
+            const group = await ConversationSchema.findOne({ _id: id, isGroup: true }).select(
+                'name description avatar createdBy participants isPrivate',
+            );
+
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+            let meId = null;
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
 
             if (!group) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
                 return;
             }
-            res.json(successResponse(Status.OK, 'Group fetched successfully', group));
+
+            const members = await ParticipantSchema.find({ conversationId: id });
+
+            const isMember = members.some((m) => m.user.toString() === meId);
+
+            const isRequested = await GroupInvitationSchema.findOne({
+                conversationId: id,
+                invitedTo: meId,
+                status: 'pending',
+            });
+
+            res.json(
+                successResponse(Status.OK, 'Group fetched successfully', {
+                    ...group.toObject(),
+                    members: members.length,
+                    isMember,
+                    isRequested: !!isRequested,
+                }),
+            );
         } catch (error) {
             next(error);
         }

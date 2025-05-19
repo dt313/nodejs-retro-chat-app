@@ -15,6 +15,7 @@ import ws from '@/configs/ws';
 import { AuthRequest } from '@/types/auth-request';
 import { compareTime, diffTime } from '@/helper/time';
 import GroupInvitation from '@/models/group-invitation.model';
+import MessageSchema from '@/models/message.model';
 
 class InvitationController {
     async createGroupInvitation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -43,6 +44,18 @@ class InvitationController {
                 user: meId,
                 conversationId: groupId,
             });
+
+            const isParticipant2 = await ParticipantSchema.findOne({
+                user: userId,
+                conversationId: groupId,
+            });
+
+            if (isParticipant2) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'You are already a member of this group'),
+                );
+                return;
+            }
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
@@ -74,10 +87,7 @@ class InvitationController {
                         return;
                     }
                 } else if (isRequested.status === 'accepted') {
-                    res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'This user is already in this group'),
-                    );
-                    return;
+                    await isRequested.deleteOne();
                 } else {
                     res.status(Status.BAD_REQUEST).json(
                         errorResponse(Status.BAD_REQUEST, 'You already invited this user to this group'),
@@ -235,6 +245,36 @@ class InvitationController {
                         }
                     });
                 }
+            }
+
+            // new message
+            const newMessage = await MessageSchema.create({
+                conversationId: isGroupExist._id,
+                sender: meId,
+                content: 'group-joined',
+                messageType: 'notification',
+            });
+
+            const populatedMessage = await newMessage.populate([
+                { path: 'sender', select: 'fullName avatar username' },
+            ]);
+
+            const participants = await ParticipantSchema.find({ conversationId: isGroupExist._id }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            const socket = ws.getWSS();
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'message',
+                                data: { message: populatedMessage, conversationId: isGroupExist._id },
+                            }),
+                        );
+                    }
+                });
             }
 
             if (status === 'rejected') {
@@ -654,6 +694,45 @@ class InvitationController {
                     errorResponse(Status.NOT_FOUND, 'Cannot found friend request record'),
                 );
             }
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async unFriend(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { toUserId } = req.params;
+            const meId = req.payload?.userId;
+
+            if (!meId) {
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                return;
+            }
+
+            const isFriend = await FriendshipSchema.findOne({
+                $or: [
+                    { user1: meId, user2: toUserId },
+                    { user2: meId, user1: toUserId },
+                ],
+            });
+
+            if (!isFriend) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'You are not friends'));
+                return;
+            }
+
+            await isFriend.deleteOne();
+
+            // remove friend request
+
+            await FriendRequestSchema.findOneAndDelete({
+                $or: [
+                    { receiver: meId, sender: toUserId },
+                    { receiver: toUserId, sender: meId },
+                ],
+            });
+
+            res.json(successResponse(Status.OK, 'Unfriend successfully', isFriend));
         } catch (error) {
             next(error);
         }

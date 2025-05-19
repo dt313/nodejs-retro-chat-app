@@ -12,8 +12,6 @@ const UserSchema = new Schema(
         email: { type: String, required: true, unique: true },
         password: { type: String, required: true },
         avatar: { type: String, default: '', required: false },
-        isFriendRequestedByOther: { type: Boolean, default: false },
-        isFriendRequestedByMe: { type: Boolean, default: false },
     },
     { timestamps: true },
 );

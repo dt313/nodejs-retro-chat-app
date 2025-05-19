@@ -5,9 +5,9 @@ import FriendRequestSchema from '@/models/friend-request.model';
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
-import { ObjectId } from 'mongoose';
 import Friendship from '@/models/friendship.model';
-
+import ParticipantSchema from '@/models/participant.model';
+import bcrypt from 'bcrypt';
 class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
@@ -29,11 +29,18 @@ class UserController {
             const authHeader = req.headers['authorization'];
             const token = authHeader?.split(' ')[1];
 
+            const { q } = req.query;
+
             if (token) {
                 meId = await getUserIdFromAccessToken(token);
             }
 
-            let users = await UserSchema.find({ _id: { $ne: meId } });
+            console.log('meId', meId);
+
+            let users = await UserSchema.find({
+                _id: { $ne: meId },
+                $or: [{ fullName: { $regex: q, $options: 'i' } }, { username: { $regex: q, $options: 'i' } }],
+            });
 
             if (meId) {
                 console.log(meId);
@@ -100,12 +107,62 @@ class UserController {
     async getUserByUsername(req: Request, res: Response, next: NextFunction) {
         try {
             const { username } = req.params;
-            const user = await UserSchema.findOne({ username });
-            if (user) {
-                res.json(successResponse(Status.OK, 'User fetched successfully', user));
-            } else {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+            let meId = null;
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
             }
+
+            const user = await UserSchema.findOne({ username });
+
+            if (!user) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                return;
+            }
+
+            const isFriend = await Friendship.findOne({
+                $or: [
+                    { user1: meId, user2: user._id },
+                    { user2: meId, user1: user._id },
+                ],
+            });
+
+            const isFriendRequestedByMe = await FriendRequestSchema.findOne({
+                sender: meId,
+                receiver: user._id,
+                status: 'pending',
+            });
+            const isFriendRequestedByOther = await FriendRequestSchema.findOne({
+                sender: user._id,
+                receiver: meId,
+                status: 'pending',
+            });
+
+            console.log('isFriendRequestedByMe', isFriendRequestedByMe);
+            console.log('isFriendRequestedByOther', isFriendRequestedByOther);
+
+            const friends = await Friendship.find({
+                $or: [{ user1: meId }, { user2: meId }],
+            });
+            const participants = await ParticipantSchema.find({ user: user._id }).populate(
+                'conversationId',
+                'name isGroup isDeleted',
+            );
+            const conversations = participants.map((p) => p.conversationId);
+            const groups = conversations.filter((c: any) => c.isGroup && !c.isDeleted);
+
+            res.json(
+                successResponse(Status.OK, 'User fetched successfully', {
+                    ...user.toObject(),
+                    isFriend: !!isFriend,
+                    isFriendRequestedByMe: !!isFriendRequestedByMe,
+                    isFriendRequestedByOther: !!isFriendRequestedByOther,
+                    friends: friends.length,
+                    groups: groups.length,
+                }),
+            );
         } catch (error) {
             next(error);
         }
@@ -156,6 +213,30 @@ class UserController {
 
     async deleteUser(req: Request, res: Response, next: NextFunction) {
         try {
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async resetPassword(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { email, password } = req.body;
+
+            const user = await UserSchema.findOne({ email });
+            if (!user) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                return;
+            }
+
+            // encode password
+            const salt = await bcrypt.genSalt(10);
+            const encodedPassword = await bcrypt.hash(password, salt);
+
+            // update password
+            user.password = encodedPassword;
+            await user.save();
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Password reset successfully', true));
         } catch (error) {
             next(error);
         }
