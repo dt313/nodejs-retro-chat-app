@@ -401,7 +401,7 @@ class ConversationController {
                     user: meId,
                     deletedAt: { $ne: null },
                 });
-                console.log('isParticipantDeleted', isParticipantDeleted);
+
                 if (isParticipantDeleted) {
                     isParticipantDeleted.deletedAt = null;
                     isParticipantDeleted.jointAt = new Date();
@@ -479,6 +479,29 @@ class ConversationController {
                 return;
             }
 
+            const lastMessage = await MessageSchema.findOne({ conversationId })
+                .sort({ createdAt: -1 })
+                .populate('attachments');
+            console.log(lastMessage);
+
+            const imageMessageId = lastMessage?.images ? lastMessage?.images._id : null;
+            const attachmentId =
+                lastMessage && lastMessage.attachments && lastMessage.attachments.length > 0
+                    ? lastMessage.attachments[lastMessage.attachments.length - 1]._id
+                    : null;
+
+            // compare createdAt and select oldest one
+            if (lastMessage?.content) {
+                isParticipant.lastMessage = lastMessage._id;
+            } else {
+                const lastId = imageMessageId || attachmentId;
+                if (lastId) {
+                    isParticipant.lastMessage = lastId;
+                }
+            }
+            isParticipant.lastMessageReadAt = new Date();
+            await isParticipant.save();
+
             const lastMessageReadUser = isExistConversation.lastMessage?.readedBy;
 
             const isReadUser = lastMessageReadUser?.some((u) => u.toString() === meId);
@@ -491,8 +514,52 @@ class ConversationController {
             }
 
             isExistConversation.lastMessage?.readedBy.push(new Types.ObjectId(meId));
-            await isExistConversation.save();
-            res.status(Status.OK).json(successResponse(Status.OK, 'Read last message successfully', true));
+
+            const savedConversation = await isExistConversation.save();
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+            ]);
+
+            const participants = await ParticipantSchema.find({ conversationId }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            // ws send message to all members in group
+            const socket = ws.getWSS();
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'conversation-update',
+                                data: {
+                                    conversationId,
+                                    conversation: populatedConversation,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Read last message successfully', populatedConversation),
+            );
         } catch (error) {
             next(error);
         }

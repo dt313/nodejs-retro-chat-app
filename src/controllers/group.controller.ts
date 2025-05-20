@@ -64,6 +64,7 @@ class GroupController {
     async getGroupById(req: Request, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
+
             const group = await ConversationSchema.findOne({ _id: id, isGroup: true }).select(
                 'name description avatar createdBy participants isPrivate',
             );

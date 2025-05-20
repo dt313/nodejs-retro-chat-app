@@ -9,7 +9,7 @@ import UserSchema from '@/models/user.model';
 import { AuthRequest } from '@/types/auth-request';
 import { Status } from '@/types/response';
 import { successResponse, errorResponse } from '@/utils/response';
-import { Model, Types } from 'mongoose';
+import mongoose, { Model, Types } from 'mongoose';
 import { Response, NextFunction } from 'express';
 import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
@@ -77,11 +77,31 @@ class MessageController {
 
             let newImages = null;
             // if message has attachments
-            const newAttachments = new Set();
+            const newAttachments = new Set<Types.ObjectId>();
             if (attachments && attachments.length > 0) {
                 // get all image types
                 const files = attachments.filter((attachment) => !attachment.mimetype.startsWith('image/'));
                 const images = attachments.filter((attachment) => attachment.mimetype.startsWith('image/'));
+                if (files.length > 0) {
+                    console.log('SAVE FILE');
+                    for (const file of files) {
+                        const stream = await storeFileToCloudinary(file, 'conversation-files');
+                        const fileUrl = (stream as any).secure_url;
+                        const fileName = (stream as any).public_id.split('/').pop();
+
+                        console.log('fileName', fileName);
+
+                        const newAttachment = await AttachmentSchema.create({
+                            url: fileUrl,
+                            name: fileName,
+                            type: 'file',
+                            size: file.size,
+                            conversationId,
+                            sender: meIdObjectId,
+                        });
+                        newAttachments.add(newAttachment._id);
+                    }
+                }
                 if (images.length > 0) {
                     const imageUrls = new Set();
                     // save image to cloud
@@ -102,26 +122,6 @@ class MessageController {
                         conversationId,
                         sender: meIdObjectId,
                     });
-                }
-                if (files.length > 0) {
-                    console.log('SAVE FILE');
-                    for (const file of files) {
-                        const stream = await storeFileToCloudinary(file, 'conversation-files');
-                        const fileUrl = (stream as any).secure_url;
-                        const fileName = (stream as any).public_id.split('/').pop();
-
-                        console.log('fileName', fileName);
-
-                        const newAttachment = await AttachmentSchema.create({
-                            url: fileUrl,
-                            name: fileName,
-                            type: 'file',
-                            size: file.size,
-                            conversationId,
-                            sender: meIdObjectId,
-                        });
-                        newAttachments.add(newAttachment._id);
-                    }
                 }
             }
 
@@ -155,6 +155,23 @@ class MessageController {
                 sentAt: new Date(),
                 readedBy: [new Types.ObjectId(meId)],
             };
+
+            if (content) isParticipant.lastMessage = newMessage._id;
+            else {
+                const lastImageId = newImages?._id;
+                const attachmentsArray = Array.from(newAttachments);
+                const lastFileId =
+                    attachmentsArray.length > 0 ? attachmentsArray[attachmentsArray.length - 1]._id : null;
+
+                if (lastImageId) {
+                    isParticipant.lastMessage = new mongoose.Types.ObjectId(lastImageId);
+                } else if (lastFileId) {
+                    isParticipant.lastMessage = lastFileId;
+                }
+            }
+
+            isParticipant.lastMessageReadAt = new Date();
+            await isParticipant.save();
 
             const savedConversation = await isExistConversation.save();
 

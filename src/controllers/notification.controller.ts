@@ -3,6 +3,7 @@ import { Status } from '@/types/response';
 import { errorResponse, successResponse } from '@/utils/response';
 import NotificationSchema from '@/models/notification.model';
 import { AuthRequest } from '@/types/auth-request';
+import mongoose from 'mongoose';
 
 class NotificationController {
     async getAllNotificationsByUserId(req: AuthRequest, res: Response, next: NextFunction) {
@@ -33,6 +34,29 @@ class NotificationController {
         } catch (error) {
             next(error);
         }
+    }
+
+    async readNotificationById(req: AuthRequest, res: Response, next: NextFunction) {
+        const meId = req.payload?.userId;
+        const { notificationId } = req.params;
+
+        const notification = await NotificationSchema.findById(notificationId);
+
+        if (!notification) {
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Notification not found'));
+            return;
+        }
+
+        if (notification?.user._id.toString() !== meId) {
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Notification not found'));
+            return;
+        }
+
+        notification.isRead = true;
+        const newNotification = await notification.save();
+
+        res.status(Status.OK).json(errorResponse(Status.OK, 'Read notification successfully', newNotification));
+        return;
     }
 }
 export default new NotificationController();
