@@ -26,6 +26,18 @@ class MessageController {
             const { replyTo, replyType, content, isGroup } = req.body;
             const attachments = req.files as Express.Multer.File[]; // Cast to the correct type
 
+            const result = messageValidate.createMessage.safeParse({
+                conversationId,
+                userId: meId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation error', result.error),
+                );
+                return;
+            }
+
             if (isGroup === null) {
                 res.status(Status.BAD_REQUEST).json(
                     errorResponse(Status.BAD_REQUEST, 'isGroup field must be boolean type'),
@@ -439,10 +451,19 @@ class MessageController {
             const meId = req.payload?.userId;
             const { reactionId } = req.params;
 
-            console.log('reactionId', reactionId);
+            const result = messageValidate.cancelReaction.safeParse({
+                userId: meId,
+                reactionId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation error', result.error),
+                );
+                return;
+            }
 
             const isExistReaction = await ReactionSchema.findById(reactionId);
-            console.log('isExistReaction', isExistReaction);
             if (!isExistReaction) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Reaction not found'));
                 return;
@@ -771,6 +792,18 @@ class MessageController {
         try {
             const meId = req.payload?.userId;
             const { type, messageId } = req.params;
+
+            const result = messageValidate.deleteMessage.safeParse({
+                userId: meId,
+                type,
+                messageId,
+            });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation error', result.error),
+                );
+                return;
+            }
 
             const getType = (type: string) => {
                 if (type === 'text') {

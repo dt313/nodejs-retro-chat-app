@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import mongoose, { Types } from 'mongoose';
+import { Types } from 'mongoose';
 
 import ConversationSchema from '@/models/conversation.model';
 import UserSchema from '@/models/user.model';
@@ -35,7 +35,16 @@ class GroupController {
                 isGroup: true,
                 isDeleted: false,
                 $or: [{ name: { $regex: q, $options: 'i' } }],
-            }).select('-password -lastMessage -isDeleted -createdAt -__v -password -updatedAt -deletedBy');
+            })
+                .select('-password -lastMessage -isDeleted -createdAt -__v -password -updatedAt -deletedBy')
+                .populate({
+                    path: 'participants',
+                    select: 'user role',
+                    populate: {
+                        path: 'user',
+                        select: 'fullName avatar username',
+                    },
+                });
 
             const groupIds = groups.map((g) => g._id);
 
@@ -64,6 +73,14 @@ class GroupController {
     async getGroupById(req: Request, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
+            const result = groupValidate.getGroupById.safeParse({ groupId: id });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Invalid group ID', result.error),
+                );
+                return;
+            }
 
             const group = await ConversationSchema.findOne({ _id: id, isGroup: true }).select(
                 'name description avatar createdBy participants isPrivate',
@@ -110,6 +127,15 @@ class GroupController {
             const { groupId } = req.params;
             const meId = req.payload?.userId;
 
+            const result = groupValidate.joinGroup.safeParse({ userId: meId, groupId });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
             if (!meId) {
                 res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
                 return;
@@ -117,13 +143,6 @@ class GroupController {
 
             const password = req.body?.password || null;
             const meIdObjectId = new Types.ObjectId(meId);
-
-            const result = groupValidate.joinGroup.safeParse({ userId: meId, groupId });
-
-            if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
-                return;
-            }
 
             const user = await UserSchema.findOne({
                 _id: meIdObjectId,
@@ -228,6 +247,14 @@ class GroupController {
             const { name } = req.query;
             const meId = req.payload?.userId;
 
+            const result = groupValidate.getInvitationUsers.safeParse({ groupId, userId: meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
             const query = name
                 ? {
                       $or: [
@@ -293,6 +320,15 @@ class GroupController {
         try {
             const { groupId } = req.params;
             const { name } = req.query;
+
+            const result = groupValidate.getMemberOfGroup.safeParse({ groupId });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             const query = name
                 ? {

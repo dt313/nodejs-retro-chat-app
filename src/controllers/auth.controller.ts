@@ -40,8 +40,6 @@ class AuthController {
             const accessToken = await generateToken(user._id.toString(), 'access');
             const refreshToken = await generateToken(user._id.toString(), 'refresh');
 
-            console.log('after call ', accessToken);
-
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true,
                 maxAge: config.cookieMaxAge,
@@ -57,7 +55,7 @@ class AuthController {
 
     async register(req: Request, res: Response, next: NextFunction) {
         try {
-            const { email, fullName, password, code } = req.body;
+            const { email, code } = req.body;
 
             const result = userValidate.registerUser.safeParse(req.body);
             const isExistEmail = await UserSchema.findOne({ email: req.body.email });
@@ -141,6 +139,7 @@ class AuthController {
                 scope: ['read:user', 'user:email'].join(' '),
                 allow_signup: true,
             });
+
             const githubUrl = `https://github.com/login/oauth/authorize?${params}`;
 
             res.redirect(githubUrl);

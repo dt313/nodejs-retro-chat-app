@@ -10,3 +10,8 @@ export const loginUser = z.object({
     email: z.string().email({ message: 'Email không hợp lệ' }),
     password: z.string().min(6, { message: 'Mật khẩu ít nhất 6 ký tự' }),
 });
+
+export const resetPassword = z.object({
+    email: z.string().email({ message: 'Email không hợp lệ' }),
+    password: z.string().min(6, { message: 'Mật khẩu ít nhất 6 ký tự' }),
+});

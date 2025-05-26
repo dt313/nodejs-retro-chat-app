@@ -4,11 +4,17 @@ import { errorResponse, successResponse } from '@/utils/response';
 import NotificationSchema from '@/models/notification.model';
 import { AuthRequest } from '@/types/auth-request';
 import mongoose from 'mongoose';
+import { notificationValidate } from '@/validation';
 
 class NotificationController {
     async getAllNotificationsByUserId(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const meId = req.payload?.userId || null;
+
+            if (!meId || !mongoose.isValidObjectId(meId)) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid user ID'));
+                return;
+            }
 
             const { before } = req.query;
 
@@ -39,6 +45,13 @@ class NotificationController {
     async readNotificationById(req: AuthRequest, res: Response, next: NextFunction) {
         const meId = req.payload?.userId;
         const { notificationId } = req.params;
+
+        const result = notificationValidate.readNotificationById.safeParse({ notificationId, userId: meId });
+
+        if (!result.success) {
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+            return;
+        }
 
         const notification = await NotificationSchema.findById(notificationId);
 

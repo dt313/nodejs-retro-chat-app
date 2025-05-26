@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+export const createGroupInvitation = z.object({
+    groupId: z.string().min(1, { message: 'Group ID is required' }),
+    toId: z.string().min(1, { message: 'User ID is required' }),
+    fromId: z.string().min(1, { message: 'Sender ID is required' }),
+});
+
 export const replyInvitation = z.object({
     id: z.string().min(1, { message: 'Invitation ID is required' }),
     status: z.enum(['accepted', 'rejected']),
@@ -33,4 +39,9 @@ export const replyGroupInvitation = z.object({
     status: z.enum(['accepted', 'rejected']),
     userId: z.string().min(1, { message: 'User ID is required' }),
     groupId: z.string().min(1, { message: 'Group ID is required' }),
+});
+
+export const unFriend = z.object({
+    userId: z.string().min(1, { message: 'User ID is required' }),
+    friendId: z.string().min(1, { message: 'Friend ID is required' }),
 });

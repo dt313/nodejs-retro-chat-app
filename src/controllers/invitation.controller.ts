@@ -23,8 +23,14 @@ class InvitationController {
             const { groupId, userId } = req.params;
             const meId = req.payload?.userId;
 
-            if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+            const result = invitationValidate.createGroupInvitation.safeParse({
+                groupId,
+                toId: userId,
+                fromId: meId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
                 return;
             }
 
@@ -69,8 +75,6 @@ class InvitationController {
                 invitedTo: userId,
                 invitedBy: meId,
             });
-
-            console.log(isRequested);
 
             if (isRequested) {
                 if (isRequested.status === 'rejected' && isRequested.respondedAt) {
@@ -391,7 +395,6 @@ class InvitationController {
             const { to: toId } = req.params;
             const fromId = req.payload?.userId;
 
-            console.log('AUTH ', fromId);
             const result = invitationValidate.createFriendRequest.safeParse({ toId, fromId });
 
             if (!result.success) {
@@ -593,8 +596,6 @@ class InvitationController {
                 status: 'pending',
             });
 
-            console.log(friendRequest);
-
             if (!friendRequest) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
                 return;
@@ -703,6 +704,16 @@ class InvitationController {
         try {
             const { toUserId } = req.params;
             const meId = req.payload?.userId;
+
+            const result = invitationValidate.unFriend.safeParse({
+                userId: toUserId,
+                friendId: meId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                return;
+            }
 
             if (!meId) {
                 res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));

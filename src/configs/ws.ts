@@ -1,6 +1,6 @@
 import { Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { client as redisClient } from '@/configs/redis';
+import { client, client as redisClient } from '@/configs/redis';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
 import ParticipantSchema from '@/models/participant.model';
 import CustomWebSocket from '@/types/web-socket';
@@ -13,12 +13,21 @@ function initWSS(server: Server) {
 
     console.log('WebSocket server initialized');
 
-    wss.on('connection', (ws: CustomWebSocket) => {
+    wss.on('connection', async (ws: CustomWebSocket) => {
         console.log('Client connected');
         ws.isAuthenticated = false;
         ws.userId = '';
 
-        console.log('Client count ', wss.clients.size);
+        // send online users
+
+        ws.send(
+            JSON.stringify({
+                type: 'online_users',
+                data: {
+                    onlineUsers: Array.from(await redisClient.sMembers('online_users')),
+                },
+            }),
+        );
 
         ws.on('message', async (message) => {
             console.log('Message received: ', message.toString());
@@ -34,7 +43,21 @@ function initWSS(server: Server) {
                         ws.userId = userId;
                         await redisClient.sAdd('online_users', userId);
                     }
+
+                    // send all socket clients the updated online users list
+                    wss.clients.forEach(async (client) => {
+                        client.send(
+                            JSON.stringify({
+                                type: 'new_online_user',
+                                data: {
+                                    onlineUser: userId,
+                                },
+                            }),
+                        );
+                    });
+
                     break;
+
                 case 'TYPING':
                 case 'NO_TYPING':
                     const { conversationId, userId: typingUserId } = data.data;
@@ -70,13 +93,26 @@ function initWSS(server: Server) {
 
         ws.on('close', async () => {
             console.log('Client disconnected');
+            if (!ws.isAuthenticated) return;
             await redisClient.sRem('online_users', ws.userId);
+            // send all socket clients the updated online users list
+            wss.clients.forEach(async (client) => {
+                client.send(
+                    JSON.stringify({
+                        type: 'offline_user',
+                        data: {
+                            offlineUser: ws.userId,
+                        },
+                    }),
+                );
+            });
             ws.isAuthenticated = true;
             ws.userId = '';
         });
 
         ws.on('error', (error) => {
             console.error('WebSocket error: ', error);
+            ws.close();
         });
     });
 }

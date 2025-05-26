@@ -8,6 +8,7 @@ import { getUserIdFromAccessToken } from '@/helper/jwt';
 import Friendship from '@/models/friendship.model';
 import ParticipantSchema from '@/models/participant.model';
 import bcrypt from 'bcrypt';
+import { userValidate } from '@/validation';
 class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
@@ -34,8 +35,6 @@ class UserController {
             if (token) {
                 meId = await getUserIdFromAccessToken(token);
             }
-
-            console.log('meId', meId);
 
             let users = await UserSchema.find({
                 _id: { $ne: meId },
@@ -172,6 +171,12 @@ class UserController {
         try {
             const meId = req.payload?.userId;
             const { name } = req.query;
+
+            if (!meId) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid user ID'));
+                return;
+            }
+
             const query = name
                 ? {
                       $or: [
@@ -196,7 +201,6 @@ class UserController {
                 ...query,
             }).select('avatar fullName username');
 
-            console.log('friends', friends);
             res.status(Status.OK).json(successResponse(Status.OK, 'Friends fetched successfully', friends));
             return;
         } catch (error) {
@@ -221,6 +225,12 @@ class UserController {
     async resetPassword(req: Request, res: Response, next: NextFunction) {
         try {
             const { email, password } = req.body;
+
+            const result = userValidate.resetPassword.safeParse({ email, password });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                return;
+            }
 
             const user = await UserSchema.findOne({ email });
             if (!user) {

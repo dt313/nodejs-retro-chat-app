@@ -22,12 +22,19 @@ import CustomWebSocket from '@/types/web-socket';
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const me = req.payload?.userId;
+            console.log('create conversation group');
+            const meId = req.payload?.userId;
             const { name, password, type, description, rules } = req.body;
             let thumbnail = req.file as Express.Multer.File;
 
-            // group conversation
-            console.log('create conversation group');
+            const result = conversationValidate.createGroupConversation.safeParse({ ...req.body, meId });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             let newPassword = null;
 
@@ -44,7 +51,7 @@ class ConversationController {
 
             const conversation = await ConversationSchema.create({
                 isGroup: true,
-                createdBy: me,
+                createdBy: meId,
                 name,
                 thumbnail,
                 password: newPassword,
@@ -55,7 +62,7 @@ class ConversationController {
             });
 
             // create participants
-            const newParticipant = await createParticipant(me, conversation._id, 'creator');
+            const newParticipant = await createParticipant(meId, conversation._id, 'creator');
             if (!newParticipant) {
                 next(errorResponse(Status.BAD_REQUEST, 'Failed to create participants'));
                 return;
@@ -87,8 +94,6 @@ class ConversationController {
             const meId = req.payload?.userId;
             const { name } = req.query || '';
             const searchName = typeof name === 'string' ? name : '';
-
-            console.log('searchName', searchName);
 
             const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
             const joinedConversationIds = participants.map((p) => p.conversationId);
@@ -154,6 +159,14 @@ class ConversationController {
         try {
             const { conversationId } = req.params;
             const meId = req.payload?.userId;
+
+            const result = conversationValidate.getConversationById.safeParse({ conversationId, meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             const conversation = await ConversationSchema.findOne({
                 _id: conversationId,
@@ -237,6 +250,14 @@ class ConversationController {
             const { conversationId } = req.params;
             const meId = req.payload?.userId;
 
+            const result = conversationValidate.getMessageOfConversationById.safeParse({ conversationId, meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
             // pagination
             const { before, after, limit = 30 } = req.query;
 
@@ -282,8 +303,6 @@ class ConversationController {
                 filter.createdAt = { $gt: after, $gte: isParticipant.jointAt.toISOString() };
             }
 
-            console.log(filter);
-
             const messages = await MessageSchema.find({ ...filter })
                 .populate('sender', 'fullName avatar username')
                 .populate({
@@ -325,8 +344,6 @@ class ConversationController {
                 })
                 .sort(after ? { createdAt: 1 } : { createdAt: -1 })
                 .limit(Number(limit));
-
-            // console.log(messages);
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Get message of conversation successfully', messages),
@@ -461,6 +478,14 @@ class ConversationController {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
 
+            const result = conversationValidate.readLastMessage.safeParse({ conversationId, meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
                 isDeleted: false,
@@ -571,8 +596,16 @@ class ConversationController {
             const { conversationId } = req.params;
             const { query } = req.query;
 
-            if (!query) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Query is required'));
+            const result = conversationValidate.searchMessageOfConversation.safeParse({
+                conversationId,
+                meId,
+                query,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
@@ -614,6 +647,18 @@ class ConversationController {
             const { conversationId } = req.params;
             const { userId } = req.body;
 
+            const result = conversationValidate.deleteUserFromConversation.safeParse({
+                conversationId,
+                meId,
+                userId,
+            });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
                 isGroup: true,
@@ -643,8 +688,6 @@ class ConversationController {
                 conversationId: isExistConversation,
                 role: { $ne: 'creator' },
             }).populate('user', '_id avatar username fullName');
-
-            console.log('isDeleteParticipant', isDeleteParticipant);
 
             if (!isDeleteParticipant) {
                 res.status(Status.BAD_REQUEST).json(
@@ -719,8 +762,19 @@ class ConversationController {
 
     async getMessageOfConversationByMessageId(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            console.log('getMessageOfConversationByMessageId');
             const { conversationId, messageId } = req.params;
+
+            const result = conversationValidate.getMessageOfConversationByMessageId.safeParse({
+                conversationId,
+                messageId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
@@ -748,8 +802,6 @@ class ConversationController {
                     break;
                 }
             }
-
-            console.log('messageType', messageType);
 
             if (messageType === null) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
@@ -850,8 +902,17 @@ class ConversationController {
             const { conversationId } = req.params;
             const { userId, role } = req.body;
 
-            if (!userId || !role) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User id and role are required'));
+            const result = conversationValidate.changeRoleParticipant.safeParse({
+                conversationId,
+                meId,
+                userId,
+                role,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
@@ -937,6 +998,14 @@ class ConversationController {
         try {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
+
+            const result = conversationValidate.leaveConversation.safeParse({ conversationId, meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
@@ -1032,8 +1101,17 @@ class ConversationController {
             const { type, value } = req.body;
             let img = req.file as Express.Multer.File;
 
-            console.log('type', type);
-            console.log('value', value);
+            const result = conversationValidate.updateConversation.safeParse({
+                conversationId,
+                meId,
+            });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             if (!type && (!img || !value)) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Type and value are required'));
@@ -1240,6 +1318,14 @@ class ConversationController {
         try {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
+
+            const result = conversationValidate.deleteConversation.safeParse({ conversationId, meId });
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
 
             const isExistConversation = await ConversationSchema.findOne({
                 _id: conversationId,
