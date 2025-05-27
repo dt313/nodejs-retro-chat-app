@@ -30,19 +30,21 @@ class InvitationController {
             });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
             if (!isGroupExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm chat'));
                 return;
             }
 
             const isUserExist = await UserSchema.findOne({ _id: userId });
             if (!isUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -58,14 +60,17 @@ class InvitationController {
 
             if (isParticipant2) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are already a member of this group'),
+                    errorResponse(
+                        Status.BAD_REQUEST,
+                        'Bạn không thể mời người dùng này vì họ đã là thành viên của nhóm',
+                    ),
                 );
                 return;
             }
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not a member of this group'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên của nhóm này'),
                 );
                 return;
             }
@@ -78,23 +83,73 @@ class InvitationController {
 
             if (isRequested) {
                 if (isRequested.status === 'rejected' && isRequested.respondedAt) {
-                    const diff = diffTime(isRequested.respondedAt);
-                    const oneDay = 24 * 60 * 60 * 1000;
-                    const compareDate = compareTime(oneDay, diff);
+                    const respondedAt = new Date(isRequested.respondedAt);
+                    const diff = diffTime(respondedAt);
+                    const tenMinute = 10 * 60 * 1000; // 10 minutes in milliseconds
+                    const compareDate = compareTime(tenMinute, diff);
                     if (compareDate === 1) {
-                        res.status(Status.BAD_REQUEST).json(
-                            errorResponse(
-                                Status.BAD_REQUEST,
-                                'You cannot invite this user to this group 2 time in a day',
-                            ),
-                        );
+                        if (isRequested.invitedBy.toString() === meId) {
+                            res.status(Status.BAD_REQUEST).json(
+                                errorResponse(
+                                    Status.BAD_REQUEST,
+                                    'Bạn không thể gửi lời mời trong vòng 10 phút sau khi bị từ chối.',
+                                ),
+                            );
+                        } else {
+                            res.status(Status.BAD_REQUEST).json(
+                                errorResponse(
+                                    Status.BAD_REQUEST,
+                                    'Bạn đã từ chối lời mời của người dùng này. Vui lòng đợi 10 phút để gửi lời mời mới.',
+                                ),
+                            );
+                        }
+                        return;
+                    } else {
+                        // If the request was rejected but within the 10 minutes, we can allow to send a new request
+                        isRequested.status = 'pending';
+
+                        const newInvitation = await isRequested.save();
+
+                        const notification = await NotificationSchema.create({
+                            user: userId,
+                            type: 'group_invitation',
+                            sender: meId,
+                            group: groupId,
+                        });
+
+                        const populatedNotification = await NotificationSchema.findOne({
+                            _id: notification._id,
+                        })
+                            .populate('sender', 'fullName avatar id username')
+                            .populate('user', 'fullName avatar id username')
+                            .populate('group', 'name');
+
+                        const socket = ws.getWSS();
+
+                        if (socket) {
+                            socket.clients.forEach((client) => {
+                                const customClient = client as CustomWebSocket;
+                                if (customClient.isAuthenticated && customClient.userId === userId) {
+                                    customClient.send(
+                                        JSON.stringify({
+                                            type: 'notification',
+                                            data: {
+                                                notification: populatedNotification,
+                                            },
+                                        }),
+                                    );
+                                }
+                            });
+                        }
+
+                        res.json(successResponse(Status.OK, 'Friend request sent successfully', newInvitation));
                         return;
                     }
                 } else if (isRequested.status === 'accepted') {
                     await isRequested.deleteOne();
                 } else {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'You already invited this user to this group'),
+                        errorResponse(Status.BAD_REQUEST, 'Bạn đã gửi lời mời cho người dùng này rồi'),
                     );
                     return;
                 }
@@ -173,21 +228,23 @@ class InvitationController {
             });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const isUserExist = await UserSchema.findOne({ _id: senderId });
 
             if (!isUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
             const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
 
             if (!isGroupExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm chat'));
                 return;
             }
 
@@ -199,7 +256,7 @@ class InvitationController {
             });
 
             if (!invitation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Invitation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy lời mời'));
                 return;
             }
 
@@ -315,19 +372,21 @@ class InvitationController {
             });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
 
             const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
 
             if (!isGroupExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm chat'));
                 return;
             }
 
@@ -338,7 +397,7 @@ class InvitationController {
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not a member of this group'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên của nhóm này'),
                 );
                 return;
             }
@@ -351,7 +410,9 @@ class InvitationController {
             });
 
             if (!isInvitationExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Invitation not found'));
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'Bạn không phải là người mời nên không thể hủy lời mời này'),
+                );
                 return;
             }
 
@@ -366,9 +427,7 @@ class InvitationController {
                 type: 'group_invitation',
             });
 
-            res.status(Status.OK).json(
-                successResponse(Status.OK, 'Cancel group invitation successfully', isInvitationExist),
-            );
+            res.status(Status.OK).json(successResponse(Status.OK, 'Hủy lời mời thành công', isInvitationExist));
         } catch (error) {
             next(error);
         }
@@ -398,7 +457,9 @@ class InvitationController {
             const result = invitationValidate.createFriendRequest.safeParse({ toId, fromId });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
@@ -412,14 +473,16 @@ class InvitationController {
             const isReceivedUserExist = await UserSchema.findOne({ _id: toId });
 
             if (!isReceivedUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'Người dùng bạn muốn thêm không tồn tại'),
+                );
                 return;
             }
 
             const isRequestUserExist = await UserSchema.findOne({ _id: fromId });
 
             if (!isRequestUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User you want to add is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Người dùng không tồn tại'));
                 return;
             }
 
@@ -439,22 +502,71 @@ class InvitationController {
             if (isRequested) {
                 if (isRequested.status === 'rejected' && isRequested.respondedAt) {
                     const diff = diffTime(isRequested.respondedAt);
-                    const oneDay = 24 * 60 * 60 * 1000;
-                    const compareDate = compareTime(oneDay, diff);
+                    const tenMinute = 10 * 60 * 1000; // 10 minutes in milliseconds
+                    const compareDate = compareTime(tenMinute, diff);
                     if (compareDate === 1) {
-                        res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, 'You cannot request 2 time in a day'),
-                        );
+                        if (isRequested.sender.toString() === fromId) {
+                            res.status(Status.BAD_REQUEST).json(
+                                errorResponse(
+                                    Status.BAD_REQUEST,
+                                    'Bạn không thể gửi lời mời trong vòng 10 phút sau khi bị từ chối.',
+                                ),
+                            );
+                        } else {
+                            res.status(Status.BAD_REQUEST).json(
+                                errorResponse(
+                                    Status.BAD_REQUEST,
+                                    'Bạn đã từ chối lời mời của người dùng này. Vui lòng đợi 10 phút để gửi lời mời mới.',
+                                ),
+                            );
+                        }
                         return;
+                    } else {
+                        // If the request was rejected but within the 10 minutes, we can allow to send a new request
+                        isRequested.status = 'pending';
+
+                        const newFriendRequest = await isRequested.save();
+
+                        const notification = await NotificationSchema.create({
+                            user: toId,
+                            type: 'friend_request',
+                            sender: fromId,
+                        });
+
+                        const populatedNotification = await NotificationSchema.findOne({
+                            _id: notification._id,
+                        })
+                            .populate('sender', 'fullName avatar id username')
+                            .populate('user', 'fullName avatar id username');
+
+                        const socket = ws.getWSS();
+
+                        if (socket) {
+                            socket.clients.forEach((client) => {
+                                const customClient = client as CustomWebSocket;
+                                if (customClient.isAuthenticated && customClient.userId === toId) {
+                                    customClient.send(
+                                        JSON.stringify({
+                                            type: 'notification',
+                                            data: {
+                                                notification: populatedNotification,
+                                            },
+                                        }),
+                                    );
+                                }
+                            });
+                        }
+
+                        res.json(successResponse(Status.OK, 'Friend request sent successfully', newFriendRequest));
                     }
                 } else if (isRequested.status === 'accepted') {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'This user is already your friend'),
+                        errorResponse(Status.BAD_REQUEST, 'Bạn đã là bạn bè với người dùng này rồi'),
                     );
                     return;
                 } else {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'You already requested this user'),
+                        errorResponse(Status.BAD_REQUEST, 'Bạn đã gửi lời mời cho người dùng này rồi'),
                     );
                     return;
                 }
@@ -468,7 +580,9 @@ class InvitationController {
             });
 
             if (isFriend) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You are already friends'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Bạn đã là bạn bè với người dùng này rồi'),
+                );
                 return;
             }
 
@@ -523,14 +637,16 @@ class InvitationController {
             const result = invitationValidate.replyFriendRequest.safeParse({ id, status, userId });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const isUserExist = await UserSchema.findOne({ _id: userId });
 
             if (!isUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Người dùng không tồn tại'));
                 return;
             }
 
@@ -540,10 +656,8 @@ class InvitationController {
                 status: 'pending',
             });
 
-            console.log(friendRequest);
-
             if (!friendRequest) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy lời mời kết bạn'));
                 return;
             }
 
@@ -579,14 +693,16 @@ class InvitationController {
             const result = invitationValidate.replyFriendRequest.safeParse({ id: meId, status, userId: senderId });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const isUserExist = await UserSchema.findOne({ _id: senderId });
 
             if (!isUserExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -597,7 +713,7 @@ class InvitationController {
             });
 
             if (!friendRequest) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend request not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy lời mời kết bạn'));
                 return;
             }
 
@@ -669,7 +785,9 @@ class InvitationController {
             const result = invitationValidate.cancelFriendRequest.safeParse({ receiver: toUserId, sender: meId });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
@@ -691,9 +809,7 @@ class InvitationController {
                     type: 'friend_request',
                 });
             } else {
-                res.status(Status.NOT_FOUND).json(
-                    errorResponse(Status.NOT_FOUND, 'Cannot found friend request record'),
-                );
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy lời mời kết bạn'));
             }
         } catch (error) {
             next(error);
@@ -711,12 +827,14 @@ class InvitationController {
             });
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
 
@@ -728,7 +846,9 @@ class InvitationController {
             });
 
             if (!isFriend) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'You are not friends'));
+                res.status(Status.NOT_FOUND).json(
+                    errorResponse(Status.NOT_FOUND, 'Bạn không phải là bạn bè với người dùng này'),
+                );
                 return;
             }
 

@@ -17,13 +17,15 @@ class AttachmentController {
 
             const isExistUser = await UserSchema.findById(meId);
             if (!isExistUser) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User is not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy người dùng'));
                 return;
             }
 
             const isExistConversation = await ConversationSchema.findById(conversationId);
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -32,7 +34,7 @@ class AttachmentController {
             const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not member in this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -57,13 +59,15 @@ class AttachmentController {
 
             const isExistUser = await UserSchema.findById(meId);
             if (!isExistUser) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User is not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tim thấy người dùng'));
                 return;
             }
 
             const isExistConversation = await ConversationSchema.findById(conversationId);
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -72,7 +76,7 @@ class AttachmentController {
             const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not member in this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }

@@ -15,7 +15,6 @@ export const createParticipants = async (
         );
 
         if (!newParticipant) {
-            console.log('error create participant');
             return null; // Nếu bất kỳ participant nào không tạo được -> trả về null
         }
 

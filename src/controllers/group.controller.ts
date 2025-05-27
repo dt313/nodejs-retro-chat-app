@@ -77,7 +77,7 @@ class GroupController {
 
             if (!result.success) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'Invalid group ID', result.error),
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
                 );
                 return;
             }
@@ -95,7 +95,7 @@ class GroupController {
             }
 
             if (!group) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm'));
                 return;
             }
 
@@ -137,7 +137,7 @@ class GroupController {
             }
 
             if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
 
@@ -149,7 +149,7 @@ class GroupController {
             });
 
             if (!user) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -159,7 +159,7 @@ class GroupController {
             });
 
             if (!group) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm'));
                 return;
             }
 
@@ -167,7 +167,7 @@ class GroupController {
             if (group.isPrivate) {
                 isValidPassword = await verifyPassword(password, group.password);
                 if (!isValidPassword) {
-                    res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Group password wrong'));
+                    res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Mật khẩu không chính xác'));
                     return;
                 }
             }
@@ -179,12 +179,11 @@ class GroupController {
 
             if (isExistParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are already in this group chat'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn đã là thành viên của nhóm này'),
                 );
                 return;
             }
 
-            console.log('participant ', meId, group._id);
             const newParticipant = await createParticipant(meIdObjectId, group._id, 'member');
 
             if (!newParticipant) {
@@ -265,13 +264,13 @@ class GroupController {
                 : {};
 
             if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
 
             const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
             if (!isGroupExist) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm'));
                 return;
             }
 
@@ -281,7 +280,9 @@ class GroupController {
             const isParticipant = participantIds.includes(meId);
 
             if (!isParticipant) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You are not in this group'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên của nhóm này'),
+                );
                 return;
             }
 
@@ -341,7 +342,7 @@ class GroupController {
 
             const group = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
             if (!group) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Group not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm'));
                 return;
             }
 

@@ -21,19 +21,21 @@ class AuthController {
         try {
             const result = userValidate.loginUser.safeParse(req.body);
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Login failed', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const user = await UserSchema.findOne({ email: result.data.email });
             if (!user) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'User not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy người dùng'));
                 return;
             }
 
             const isValidPassword = await verifyPassword(result.data.password, user.password);
             if (!isValidPassword) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Invalid password'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Mật khẩu không chính xác'));
                 return;
             }
 
@@ -60,12 +62,14 @@ class AuthController {
             const result = userValidate.registerUser.safeParse(req.body);
             const isExistEmail = await UserSchema.findOne({ email: req.body.email });
             if (isExistEmail) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email already exists'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email này đã được sử dụng'));
                 return;
             }
 
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Register failed', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
@@ -116,8 +120,6 @@ class AuthController {
 
     async googleOAuth(req: Request, res: Response, next: NextFunction) {
         try {
-            console.log(config.googleRedirectUri);
-
             const googleUrl =
                 `https://accounts.google.com/o/oauth2/v2/auth` +
                 `?client_id=${config.googleClientId}` +
@@ -178,8 +180,6 @@ class AuthController {
                 let accessToken = '';
                 let refreshToken = '';
                 const user = await UserSchema.findOne({ email });
-
-                console.log('EMAIL : ', user);
 
                 if (!user) {
                     const { firstName, lastName } = splitFullName(name);
@@ -251,8 +251,6 @@ class AuthController {
                 let accessToken = '';
                 let refreshToken = '';
                 const user = await UserSchema.findOne({ email });
-
-                console.log('EMAIL : ', user);
 
                 if (!user) {
                     const { firstName, lastName } = splitFullName(name);

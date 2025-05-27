@@ -17,7 +17,7 @@ class UserController {
             if (user) {
                 res.json(user);
             } else {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
             }
         } catch (error) {
             next(error);
@@ -42,8 +42,6 @@ class UserController {
             });
 
             if (meId) {
-                console.log(meId);
-
                 const friendShips = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });
                 const myFriends = new Set(
                     friendShips.map((fr) => (fr.user1.toString() === meId ? fr.user2.toString() : fr.user1.toString())),
@@ -96,7 +94,7 @@ class UserController {
             if (user) {
                 res.json(successResponse(Status.OK, 'User fetched successfully', user));
             } else {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
             }
         } catch (error) {
             next(error);
@@ -117,7 +115,7 @@ class UserController {
             const user = await UserSchema.findOne({ username });
 
             if (!user) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -138,9 +136,6 @@ class UserController {
                 receiver: meId,
                 status: 'pending',
             });
-
-            console.log('isFriendRequestedByMe', isFriendRequestedByMe);
-            console.log('isFriendRequestedByOther', isFriendRequestedByOther);
 
             const friends = await Friendship.find({
                 $or: [{ user1: meId }, { user2: meId }],
@@ -188,7 +183,7 @@ class UserController {
 
             const isExistUser = await UserSchema.findById(meId);
             if (!isExistUser) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -228,13 +223,15 @@ class UserController {
 
             const result = userValidate.resetPassword.safeParse({ email, password });
             if (!result.success) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
                 return;
             }
 
             const user = await UserSchema.findOne({ email });
             if (!user) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 

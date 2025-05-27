@@ -12,7 +12,7 @@ class MailController {
             const { email } = req.body;
 
             if (!email) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email is required'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Bạn cần cung cấp email'));
                 return;
             }
 
@@ -56,7 +56,7 @@ class MailController {
             const { email } = req.body;
 
             if (!email) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email is required'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Bạn cần cung cấp email'));
                 return;
             }
 
@@ -97,7 +97,7 @@ class MailController {
     async verifyResetPasswordOTP(req: Request, res: Response, next: NextFunction) {
         try {
             const { email, code } = req.body;
-            console.log(email, code);
+
             if (!email || !code) {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Email and OTP are required'));
                 return;

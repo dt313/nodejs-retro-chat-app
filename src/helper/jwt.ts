@@ -21,7 +21,6 @@ export const generateToken = async (userId: string, type: 'access' | 'refresh' =
             if (err) reject(err);
             else if (token) {
                 redisClient.set(`${userId}-${type}`, token, { EX: config.cookieMaxAge });
-                console.log('redis token call ', token);
                 resolve(token);
             } else {
                 reject(new Error('Failed to generate token'));
@@ -51,7 +50,6 @@ export const verifyAccessToken = async (req: AuthRequest, res: Response, next: N
         });
 
         const redisToken = await redisClient.get(`${req.payload?.userId}-access`);
-        console.log('token ', token);
 
         if (redisToken !== token) {
             return next(errorResponse(Status.UNAUTHORIZED, 'Invalid Access Token'));
@@ -103,7 +101,6 @@ export const getUserIdFromAccessToken = async (token: string) => {
     try {
         jwt.verify(token, config.accessTokenSecret, (err: any, payload: any) => {
             if (err) {
-                console.log('Error: ', err);
                 return null;
             }
 

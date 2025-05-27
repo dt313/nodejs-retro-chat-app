@@ -45,7 +45,7 @@ class MessageController {
             }
 
             if (!meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'User not authenticated'));
+                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
             const meIdObjectId = new Types.ObjectId(meId);
@@ -57,7 +57,9 @@ class MessageController {
             });
 
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -65,18 +67,13 @@ class MessageController {
             let isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
 
-            console.log('isGroup', isGroup);
-
             if (isGroup === 'false') {
-                console.log('isGroup', isGroup);
                 const participants = await ParticipantSchema.find({ conversationId, deletedAt: { $ne: null } });
-
-                console.log('participants', participants);
 
                 if (participants.length > 0) {
                     for (const participant of participants) {
@@ -95,13 +92,10 @@ class MessageController {
                 const files = attachments.filter((attachment) => !attachment.mimetype.startsWith('image/'));
                 const images = attachments.filter((attachment) => attachment.mimetype.startsWith('image/'));
                 if (files.length > 0) {
-                    console.log('SAVE FILE');
                     for (const file of files) {
                         const stream = await storeFileToCloudinary(file, 'conversation-files');
                         const fileUrl = (stream as any).secure_url;
                         const fileName = (stream as any).public_id.split('/').pop();
-
-                        console.log('fileName', fileName);
 
                         const newAttachment = await AttachmentSchema.create({
                             url: fileUrl,
@@ -121,7 +115,7 @@ class MessageController {
                         const stream = await storeImgToCloudinary(image, 'conversation-images');
                         const imageUrl = (stream as any).secure_url;
                         const fileName = (stream as any).public_id.split('/').pop();
-                        console.log('fileName', fileName);
+
                         imageUrls.add({
                             url: imageUrl,
                             size: image.size,
@@ -220,7 +214,6 @@ class MessageController {
 
             const participants = await ParticipantSchema.find({ conversationId }).select('user');
             const participantUserIds = new Set(participants.map((p) => p.user.toString()));
-            console.log('participantUserIds', participantUserIds);
 
             // ws send message to all members in group
             const socket = ws.getWSS();
@@ -265,7 +258,6 @@ class MessageController {
             res.status(Status.OK).json(successResponse(Status.OK, 'Create message successfully', populatedMessage));
             return;
         } catch (error) {
-            console.log(error);
             next(error);
         }
     }
@@ -298,7 +290,7 @@ class MessageController {
             // check user in conversation that message belong
             const isExistMessage = await Model.findById(messageId);
             if (!isExistMessage) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Message is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy tin nhắn'));
                 return;
             }
 
@@ -307,7 +299,7 @@ class MessageController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
 
@@ -318,7 +310,7 @@ class MessageController {
 
             if (!isParticipant) {
                 res.status(Status.NOT_FOUND).json(
-                    errorResponse(Status.NOT_FOUND, 'You are not member in conversation to reaction message'),
+                    errorResponse(Status.NOT_FOUND, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -470,7 +462,9 @@ class MessageController {
             }
 
             if (isExistReaction.user.toString() !== meId) {
-                res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'You are not reacted user'));
+                res.status(Status.UNAUTHORIZED).json(
+                    errorResponse(Status.UNAUTHORIZED, 'Bạn không phải là người gửi phản ứng này'),
+                );
                 return;
             }
 
@@ -478,7 +472,7 @@ class MessageController {
 
             const isExistMessage = await Model.findById(isExistReaction.messageId);
             if (!isExistMessage) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Message is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy tin nhắn'));
                 return;
             }
 
@@ -487,7 +481,7 @@ class MessageController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
 
@@ -555,7 +549,7 @@ class MessageController {
 
             const isExistFriend = await UserSchema.findById(friendId);
             if (!isExistFriend) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Friend not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -655,7 +649,6 @@ class MessageController {
             let newImageAttachmentId = null;
             if (messageType === 'image') {
                 const oldImage = await ImageAttachmentSchema.findById(messageId);
-                console.log('oldImage', oldImage);
 
                 if (oldImage) {
                     const newImageAttachment = await ImageAttachmentSchema.create({
@@ -666,7 +659,6 @@ class MessageController {
                         isDeleted: false,
                     });
 
-                    console.log('newImageAttachment', newImageAttachment);
                     newImageAttachmentId = newImageAttachment._id;
                 }
             }
@@ -691,8 +683,6 @@ class MessageController {
                 images: newImageAttachmentId,
                 isForwarded: true,
             });
-
-            console.log('forwardedMessage', forwardedMessage);
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Forward message successfully', forwardedMessage));
 
@@ -746,7 +736,7 @@ class MessageController {
             );
 
             if (!savedConversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
 
@@ -823,13 +813,13 @@ class MessageController {
 
             const isExistMessage = await Model.findById(messageId);
             if (!isExistMessage) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Message not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy tin nhắn'));
                 return;
             }
 
             if (isExistMessage.sender.toString() !== meId) {
                 res.status(Status.UNAUTHORIZED).json(
-                    errorResponse(Status.UNAUTHORIZED, 'You are not the sender of this message'),
+                    errorResponse(Status.UNAUTHORIZED, 'Bạn không phải là người gửi tin nhắn này'),
                 );
                 return;
             }
@@ -839,7 +829,7 @@ class MessageController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
 

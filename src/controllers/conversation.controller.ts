@@ -22,7 +22,6 @@ import CustomWebSocket from '@/types/web-socket';
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            console.log('create conversation group');
             const meId = req.payload?.userId;
             const { name, password, type, description, rules } = req.body;
             let thumbnail = req.file as Express.Multer.File;
@@ -46,7 +45,6 @@ class ConversationController {
             if (thumbnail && thumbnail.buffer) {
                 const stream = await storeImgToCloudinary(thumbnail, 'conversation-thumbnails');
                 thumbnail = (stream as any).secure_url;
-                console.log(thumbnail);
             }
 
             const conversation = await ConversationSchema.create({
@@ -195,13 +193,13 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.NOT_FOUND).json(
-                    errorResponse(Status.NOT_FOUND, 'You are not member of this conversation'),
+                    errorResponse(Status.NOT_FOUND, 'Bạn không phải là thành viên của cuộc trò chuyện này'),
                 );
                 return;
             }
 
             if (!conversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
             res.json(successResponse(Status.OK, 'Get conversation by id successfully', conversation));
@@ -217,7 +215,6 @@ class ConversationController {
             const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
 
             const joinedConversationIds = participants.map((p) => p.conversationId);
-            console.log('participants', joinedConversationIds.length);
 
             const conversations = await ConversationSchema.find({
                 isDeleted: false,
@@ -236,8 +233,6 @@ class ConversationController {
                     select: '_id avatar username fullName',
                 })
                 .sort({ 'lastMessage.sentAt': -1 });
-
-            console.log('conversations', conversations.length);
 
             res.json(successResponse(Status.OK, 'Get conversation by me successfully', conversations || []));
         } catch (error) {
@@ -272,7 +267,7 @@ class ConversationController {
             });
 
             if (!conversation) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Conversation is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc trò chuyện'));
                 return;
             }
 
@@ -283,7 +278,7 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.NOT_FOUND).json(
-                    errorResponse(Status.NOT_FOUND, 'You are not member of this conversation'),
+                    errorResponse(Status.NOT_FOUND, 'Bạn không phải là thành viên của cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -370,7 +365,7 @@ class ConversationController {
             const isExistUser = await UserSchema.findById(withUserId);
 
             if (!isExistUser) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'User is not found'));
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
                 return;
             }
 
@@ -492,14 +487,16 @@ class ConversationController {
             });
 
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
             const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId: isExistConversation });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not members in this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -507,7 +504,6 @@ class ConversationController {
             const lastMessage = await MessageSchema.findOne({ conversationId })
                 .sort({ createdAt: -1 })
                 .populate('attachments');
-            console.log(lastMessage);
 
             const imageMessageId = lastMessage?.images ? lastMessage?.images._id : null;
             const attachmentId =
@@ -532,9 +528,7 @@ class ConversationController {
             const isReadUser = lastMessageReadUser?.some((u) => u.toString() === meId);
 
             if (isReadUser) {
-                res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are already read this message'),
-                );
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Bạn đã đọc tin nhắn này rồi'));
                 return;
             }
 
@@ -614,14 +608,16 @@ class ConversationController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
             const isParticipant = await ParticipantSchema.findOne({ user: meId, conversationId: isExistConversation });
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not members in this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -666,7 +662,9 @@ class ConversationController {
             });
 
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -678,7 +676,10 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not creator or admin in this conversation'),
+                    errorResponse(
+                        Status.BAD_REQUEST,
+                        'Bạn không phải là người tạo hoặc quản trị viên của cuộc trò chuyện này',
+                    ),
                 );
                 return;
             }
@@ -691,7 +692,10 @@ class ConversationController {
 
             if (!isDeleteParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'User is not member of this conversation'),
+                    errorResponse(
+                        Status.BAD_REQUEST,
+                        'Người dùng này không phải là thành viên của cuộc trò chuyện này',
+                    ),
                 );
                 return;
             }
@@ -710,7 +714,7 @@ class ConversationController {
             }
 
             if (isParticipant.user._id.toString() === isDeleteParticipant.user._id.toString()) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'You cannot kick yourself'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Bạn không thể kick chính mình'));
                 return;
             }
 
@@ -781,7 +785,9 @@ class ConversationController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -804,7 +810,7 @@ class ConversationController {
             }
 
             if (messageType === null) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy tin nhắn'));
                 return;
             }
 
@@ -857,7 +863,6 @@ class ConversationController {
                 const query = messageType === 'file' ? { attachments: messageId } : { images: messageId };
                 isExistMessage = await MessageSchema.findOne(query).populate(messagePopulateOptions);
 
-                console.log('isExistMessage', isExistMessage);
                 if (isExistMessage) {
                     searchMessageId = isExistMessage._id;
                 }
@@ -867,7 +872,7 @@ class ConversationController {
             }
 
             if (!searchMessageId) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy tin nhắn'));
                 return;
             }
 
@@ -921,7 +926,9 @@ class ConversationController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -933,7 +940,7 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not creator in this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là người tạo cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -945,7 +952,7 @@ class ConversationController {
 
             if (!isChangeRoleParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'User is not member of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Người dùng không phải là thành viên của cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -1013,7 +1020,9 @@ class ConversationController {
             });
 
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
@@ -1024,7 +1033,7 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -1033,7 +1042,10 @@ class ConversationController {
             if (isExistConversation.isGroup) {
                 if (isParticipant.role === 'creator') {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'You are creator of this conversation'),
+                        errorResponse(
+                            Status.BAD_REQUEST,
+                            'Bạn không thể rời khỏi cuộc trò chuyện nhóm vì bạn là người tạo',
+                        ),
                     );
                     return;
                 }
@@ -1123,13 +1135,15 @@ class ConversationController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
             if (isExistConversation.createdBy.toString() !== meId && isExistConversation.isGroup) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not creator of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là người tạo cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -1141,7 +1155,7 @@ class ConversationController {
 
             if (!isParticipant) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not member of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
                 );
                 return;
             }
@@ -1151,7 +1165,7 @@ class ConversationController {
                 case 'name':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support name'),
+                            errorResponse(Status.BAD_REQUEST, 'Cuộc trò chuyện 1-1 không hỗ trợ tên'),
                         );
                         return;
                     }
@@ -1166,10 +1180,9 @@ class ConversationController {
                     }
                     break;
                 case 'nickname':
-                    console.log('nickname', value);
                     if (isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, 'Group conversation does not support nickname'),
+                            errorResponse(Status.BAD_REQUEST, 'Nhóm không hỗ trợ nickname'),
                         );
                         return;
                     }
@@ -1188,7 +1201,7 @@ class ConversationController {
                 case 'description':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support description'),
+                            errorResponse(Status.BAD_REQUEST, 'Cuộc trò chuyện 1-1 không hỗ trợ mô tả'),
                         );
                         return;
                     }
@@ -1198,7 +1211,7 @@ class ConversationController {
                 case 'rules':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support rules'),
+                            errorResponse(Status.BAD_REQUEST, 'Cuộc trò chuyện 1-1 không hỗ trợ quy tắc'),
                         );
                         return;
                     }
@@ -1208,7 +1221,7 @@ class ConversationController {
                 case 'thumbnail':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support thumbnail'),
+                            errorResponse(Status.BAD_REQUEST, 'Cuộc trò chuyện 1-1 không hỗ trợ hình đại diện nhóm'),
                         );
                         return;
                     }
@@ -1222,7 +1235,7 @@ class ConversationController {
                 case 'password':
                     if (!isExistConversation.isGroup) {
                         res.status(Status.BAD_REQUEST).json(
-                            errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support password'),
+                            errorResponse(Status.BAD_REQUEST, 'Cuộc trò chuyện 1-1 không hỗ trợ mật khẩu'),
                         );
                         return;
                     }
@@ -1243,7 +1256,9 @@ class ConversationController {
                     }
                     const pinnedMessage = await MessageSchema.findById(value);
                     if (!pinnedMessage) {
-                        res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message is not found'));
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, 'Không tìm thấy tin nhắn'),
+                        );
                         return;
                     }
                     isExistConversation.pinnedMessage = pinnedMessage._id;
@@ -1332,20 +1347,22 @@ class ConversationController {
                 isDeleted: false,
             });
             if (!isExistConversation) {
-                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Conversation is not found'));
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
                 return;
             }
 
             if (isExistConversation.isGroup === false) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, '1-1 conversation does not support delete'),
+                    errorResponse(Status.BAD_REQUEST, 'Đây không phải là cuộc trò chuyện nhóm'),
                 );
                 return;
             }
 
             if (isExistConversation.createdBy.toString() !== meId) {
                 res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'You are not creator of this conversation'),
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là người tạo cuộc trò chuyện này'),
                 );
                 return;
             }

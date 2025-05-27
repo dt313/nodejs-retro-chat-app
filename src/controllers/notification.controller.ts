@@ -49,19 +49,21 @@ class NotificationController {
         const result = notificationValidate.readNotificationById.safeParse({ notificationId, userId: meId });
 
         if (!result.success) {
-            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid request', result.error));
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error));
             return;
         }
 
         const notification = await NotificationSchema.findById(notificationId);
 
         if (!notification) {
-            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Notification not found'));
+            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy thông báo'));
             return;
         }
 
         if (notification?.user._id.toString() !== meId) {
-            res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Notification not found'));
+            res.status(Status.BAD_REQUEST).json(
+                errorResponse(Status.BAD_REQUEST, 'Bạn không có quyền đọc thông báo này'),
+            );
             return;
         }
 
