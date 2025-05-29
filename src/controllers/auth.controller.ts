@@ -96,6 +96,16 @@ class AuthController {
 
     async logout(req: Request, res: Response, next: NextFunction) {
         try {
+            // clear refresh token cookie
+            res.clearCookie('refreshToken', {
+                httpOnly: true,
+                maxAge: config.cookieMaxAge,
+                path: config.refreshTokenPath,
+                domain: config.cookieDomain,
+            });
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Logout successfully', true));
+            return;
         } catch (error) {
             next(error);
         }
