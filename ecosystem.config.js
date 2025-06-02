@@ -1,0 +1,40 @@
+require('dotenv').config();
+
+module.exports = {
+    apps: [
+        {
+            name: 'retro-chat-app',
+            script: 'dist/server.js',
+            env: {
+                NODE_ENV: 'production',
+                PORT: process.env.PORT,
+                DOMAIN: process.env.DOMAIN,
+                API_BASE_PATH: process.env.API_BASE_PATH,
+                CORS_ORIGIN: process.env.CORS_ORIGIN,
+                DATABASE_URL: process.env.DATABASE_URL,
+                GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+                GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+                GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI,
+                GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+                GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+                GITHUB_REDIRECT_URI: process.env.GITHUB_REDIRECT_URI,
+                FACEBOOK_CLIENT_ID: process.env.FACEBOOK_CLIENT_ID,
+                FACEBOOK_CLIENT_SECRET: process.env.FACEBOOK_CLIENT_SECRET,
+                FACEBOOK_REDIRECT_URI: process.env.FACEBOOK_REDIRECT_URI,
+                CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+                CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+                CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+                ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET,
+                REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
+                REFRESH_TOKEN_PATH: process.env.REFRESH_TOKEN_PATH,
+                ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN,
+                REFRESH_TOKEN_EXPIRES_IN: process.env.REFRESH_TOKEN_EXPIRES_IN,
+                EMAIL_USER: process.env.EMAIL_USER,
+                EMAIL_PASS: process.env.EMAIL_PASS,
+                COOKIE_DOMAIN: process.env.COOKIE_DOMAIN,
+                COOKIE_MAX_AGE: process.env.COOKIE_MAX_AGE,
+                REDIS_URL: process.env.REDIS_URL,
+            },
+        },
+    ],
+};

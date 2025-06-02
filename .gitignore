@@ -6,3 +6,5 @@ node_modules
 
 /mongo-data
 /dist
+
+production-env.txt
