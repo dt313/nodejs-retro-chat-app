@@ -1,5 +1,5 @@
 # 1. Stage: Build the TypeScript code
-FROM node:20-alpine AS builder
+FROM node:23-alpine AS builder
 
 # Tạo thư mục làm việc
 WORKDIR /app
@@ -17,7 +17,7 @@ COPY src ./src
 RUN npm run build
 
 # 2. Stage: Run the built app in lightweight image
-FROM node:20-alpine
+FROM node:23-alpine
 
 # Làm việc trong thư mục /app
 WORKDIR /app
@@ -27,7 +27,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/dist ./dist
 
 # Cài production dependencies
-RUN npm install --only=production
+RUN npm install
 
 # Bắt đầu app
-CMD ["node", "-r", "tsconfig-paths/register", "dist/server.js"]
+CMD ["node",  "dist/server.js"]
