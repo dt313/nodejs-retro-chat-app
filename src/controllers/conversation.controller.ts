@@ -288,14 +288,15 @@ class ConversationController {
                 createdAt?: { $lt?: string; $gt?: string; $gte?: string };
             }
 
-            const filter: MessageFilter = { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
+            // const filter: MessageFilter = { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
+            const filter: MessageFilter = { conversationId };
 
             if (before && typeof before === 'string') {
-                filter.createdAt = { $lt: before, $gte: isParticipant.jointAt.toISOString() };
+                filter.createdAt = { $lt: before };
             }
 
             if (after && typeof after === 'string') {
-                filter.createdAt = { $gt: after, $gte: isParticipant.jointAt.toISOString() };
+                filter.createdAt = { $gt: after };
             }
 
             const messages = await MessageSchema.find({ ...filter })
