@@ -138,7 +138,7 @@ class UserController {
             });
 
             const friends = await Friendship.find({
-                $or: [{ user1: meId }, { user2: meId }],
+                $or: [{ user1: user._id }, { user2: user._id }],
             });
             const participants = await ParticipantSchema.find({ user: user._id }).populate(
                 'conversationId',
