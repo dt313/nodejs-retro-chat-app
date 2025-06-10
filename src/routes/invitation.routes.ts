@@ -7,6 +7,7 @@ const router = express.Router();
 router.get('/group/:userId', invitationController.getAllInvitationsOfGroupByUserId);
 router.post('/group/:groupId/to/:userId', verifyAccessToken, invitationController.createGroupInvitation);
 router.post('/group/reply', verifyAccessToken, invitationController.replyGroupInvitation);
+router.get('/group/accept/:groupId', verifyAccessToken, invitationController.acceptGroupInvitation);
 router.post('/group/cancel/:toUserId', verifyAccessToken, invitationController.cancelGroupInvitation);
 
 // friend add request

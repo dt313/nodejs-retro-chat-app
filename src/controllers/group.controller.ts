@@ -17,6 +17,8 @@ import { createParticipant } from '@/helper';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
 import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
+import FriendshipSchema from '@/models/friendship.model';
+import FriendRequestSchema from '@/models/friend-request.model';
 
 class GroupController {
     async getAllGroups(req: Request, res: Response, next: NextFunction) {
@@ -56,10 +58,18 @@ class GroupController {
 
                 const myGroupIds = new Set(myParticipants.map((p) => p.conversationId.toString()));
 
+                const pendingInvitations = await GroupInvitationSchema.find({
+                    invitedTo: meId,
+                    status: 'pending',
+                });
+
+                const invitedGroupIds = new Set(pendingInvitations.map((invite) => invite.conversationId.toString()));
+
                 groups = groups.map((group: any) => {
                     return {
                         ...(group.toObject?.() ?? group),
                         isJoined: myGroupIds.has(group._id.toString()),
+                        isInvited: invitedGroupIds.has(group._id.toString()),
                     };
                 });
             }
@@ -83,7 +93,7 @@ class GroupController {
             }
 
             const group = await ConversationSchema.findOne({ _id: id, isGroup: true }).select(
-                'name description avatar createdBy participants isPrivate',
+                'name description rules avatar createdBy participants isPrivate createdAt',
             );
 
             const authHeader = req.headers['authorization'];
@@ -99,7 +109,7 @@ class GroupController {
                 return;
             }
 
-            const members = await ParticipantSchema.find({ conversationId: id });
+            const members = await ParticipantSchema.find({ conversationId: id, deletedAt: null });
 
             const isMember = members.some((m) => m.user.toString() === meId);
 
@@ -193,6 +203,18 @@ class GroupController {
 
             group.participants.push(newParticipant);
             await group.save();
+
+            // accept invitation if have
+            const invitation = await GroupInvitationSchema.findOne({
+                invitedTo: meId,
+                conversationId: groupId,
+            });
+
+            if (invitation) {
+                invitation.respondedAt = new Date();
+                invitation.status = 'accepted';
+                invitation.save();
+            }
 
             // notification to admin
             await senJoinGroupNotification({
@@ -348,17 +370,164 @@ class GroupController {
 
             const participants = await ParticipantSchema.find({
                 conversationId: groupId,
-            }).populate({
-                path: 'user',
-                match: query,
-                select: '_id avatar username fullName',
-            });
-
-            const filteredParticipants = participants.filter((p) => p.user);
+            })
+                .populate({
+                    path: 'user',
+                    match: query,
+                    select: '_id avatar username fullName',
+                })
+                .select('-lastMessage -lastMessageReadAt -deletedAt -nickname');
 
             res.status(Status.OK).json(
-                successResponse(Status.OK, 'Members of group fetched successfully', filteredParticipants),
+                successResponse(Status.OK, 'Members of group fetched successfully', participants),
             );
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getMembersOfGroupInProfile(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { groupId } = req.params;
+            const { name } = req.query;
+
+            let meId = null;
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
+
+            const result = groupValidate.getMemberOfGroup.safeParse({ groupId });
+
+            if (!result.success) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Validation Error', result.error),
+                );
+                return;
+            }
+
+            const query = name
+                ? {
+                      $or: [
+                          { fullName: { $regex: name, $options: 'i' } },
+                          { username: { $regex: name, $options: 'i' } },
+                      ],
+                  }
+                : {};
+
+            const group = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
+            if (!group) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm'));
+                return;
+            }
+
+            let participants = await ParticipantSchema.find({
+                conversationId: groupId,
+            })
+                .populate({
+                    path: 'user',
+                    match: query,
+                    select: '_id avatar username fullName',
+                })
+                .select('-lastMessage -lastMessageReadAt -deletedAt -nickname');
+
+            if (meId) {
+                const friendShips = await FriendshipSchema.find({ $or: [{ user1: meId }, { user2: meId }] });
+                const myFriends = new Set(
+                    friendShips.map((fr) => (fr.user1.toString() === meId ? fr.user2.toString() : fr.user1.toString())),
+                );
+                const friendRequests = await FriendRequestSchema.find({
+                    status: 'pending',
+                    $or: [
+                        {
+                            sender: meId,
+                        },
+                        { receiver: meId },
+                    ],
+                    $nor: [
+                        {
+                            sender: { $in: Array.from(myFriends) },
+                            receiver: { $in: Array.from(myFriends) },
+                        },
+                    ],
+                });
+
+                const requestedByMe = new Set(
+                    friendRequests.filter((fr) => fr.sender.toString() === meId).map((fr) => fr.receiver.toString()),
+                );
+
+                const requestedByOther = new Set(
+                    friendRequests.filter((fr) => fr.receiver.toString() === meId).map((fr) => fr.sender.toString()),
+                );
+
+                participants = participants.map((p: any) => {
+                    const userId = p.user._id.toString();
+                    return {
+                        ...(p.toObject?.() ?? p),
+                        isFriendRequestedByOther: requestedByOther.has(userId),
+                        isFriendRequestedByMe: requestedByMe.has(userId),
+                        isFriend: myFriends.has(userId),
+                    };
+                });
+            }
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Members of group fetched successfully', participants),
+            );
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getGroupsByUserId(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = req.params;
+
+            let meId = null;
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
+
+            const participants = await ParticipantSchema.find({ user: userId, deletedAt: null });
+
+            const joinedConversationIds = participants.map((p) => p.conversationId);
+
+            let groups = await ConversationSchema.find({
+                isDeleted: false,
+                isGroup: true,
+                $or: [{ _id: { $in: joinedConversationIds } }],
+            })
+                .sort({ createdAt: -1 })
+                .select('name thumbnail createdBy isPrivate');
+
+            if (meId) {
+                const meParticipant = await ParticipantSchema.find({ user: meId, deletedAt: null });
+
+                const meJoinedConversationIds = meParticipant.map((p) => p.conversationId);
+                const meJoinedGroupIds = new Set(meJoinedConversationIds.map((id) => id.toString()));
+
+                const invitations = await GroupInvitationSchema.find({
+                    invitedTo: meId,
+                    status: 'pending',
+                });
+
+                const invitationIds = new Set(invitations.map((i) => i.conversationId.toString()));
+
+                groups = groups.map((group: any) => {
+                    const groupId = group._id.toString();
+                    return {
+                        ...(group.toObject?.() ?? group),
+                        isMember: meJoinedGroupIds.has(groupId),
+                        isInvited: invitationIds.has(groupId),
+                    };
+                });
+            }
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Groups fetched successfully', groups));
         } catch (error) {
             next(error);
         }

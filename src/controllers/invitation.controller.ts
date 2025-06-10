@@ -14,7 +14,6 @@ import { invitationValidate } from '@/validation';
 import ws from '@/configs/ws';
 import { AuthRequest } from '@/types/auth-request';
 import { compareTime, diffTime } from '@/helper/time';
-import GroupInvitation from '@/models/group-invitation.model';
 import MessageSchema from '@/models/message.model';
 
 class InvitationController {
@@ -276,7 +275,7 @@ class InvitationController {
 
                 // notification for sender
                 const notification = await NotificationSchema.create({
-                    user: senderId,
+                    user: isGroupExist.createdBy,
                     type: 'group_joined',
                     sender: meId,
                     group: groupId,
@@ -294,7 +293,7 @@ class InvitationController {
                 if (socket) {
                     socket.clients.forEach((client) => {
                         const customClient = client as CustomWebSocket;
-                        if (customClient.isAuthenticated && customClient.userId === senderId) {
+                        if (customClient.isAuthenticated && customClient.userId === isGroupExist.createdBy.toString()) {
                             customClient.send(
                                 JSON.stringify({
                                     type: 'notification',
@@ -349,6 +348,130 @@ class InvitationController {
             await NotificationSchema.deleteOne({
                 user: meId,
                 sender: senderId,
+                group: groupId,
+                type: 'group_invitation',
+            });
+
+            res.json(successResponse(Status.OK, 'Friend request replied successfully', invitation));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async acceptGroupInvitation(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { groupId } = req.params;
+            const meId = req.payload?.userId;
+
+            const isUserExist = await UserSchema.findOne({ _id: meId });
+
+            if (!isUserExist) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
+                return;
+            }
+
+            const isGroupExist = await ConversationSchema.findOne({ _id: groupId, isGroup: true });
+
+            if (!isGroupExist) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy nhóm chat'));
+                return;
+            }
+
+            const invitation = await GroupInvitationSchema.findOne({
+                invitedTo: meId,
+                conversationId: groupId,
+                status: 'pending',
+            }).populate({
+                path: 'invitedBy',
+                select: 'avatar username fullName',
+            });
+
+            if (!invitation) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy lời mời'));
+                return;
+            }
+
+            invitation.status = 'accepted';
+            invitation.respondedAt = new Date();
+            invitation.save();
+
+            // add new participant
+
+            const newParticipant = await ParticipantSchema.create({
+                user: meId,
+                conversationId: groupId,
+            });
+
+            if (newParticipant) {
+                isGroupExist.participants.push(newParticipant._id);
+                await isGroupExist.save();
+            }
+
+            // notification for sender
+            const notification = await NotificationSchema.create({
+                user: isGroupExist.createdBy,
+                type: 'group_joined',
+                sender: meId,
+                group: groupId,
+            });
+
+            const populatedNotification = await NotificationSchema.findOne({
+                _id: notification._id,
+            })
+                .populate('sender', 'fullName avatar id username')
+                .populate('user', 'fullName avatar id username')
+                .populate('group', 'name');
+
+            const socket = ws.getWSS();
+
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && customClient.userId === isGroupExist.createdBy.toString()) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'notification',
+                                data: {
+                                    notification: populatedNotification,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            // new message in conversation
+            const newMessage = await MessageSchema.create({
+                conversationId: isGroupExist._id,
+                sender: meId,
+                content: 'group-joined',
+                messageType: 'notification',
+            });
+
+            const populatedMessage = await newMessage.populate([
+                { path: 'sender', select: 'fullName avatar username' },
+            ]);
+
+            const participants = await ParticipantSchema.find({ conversationId: isGroupExist._id }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'message',
+                                data: { message: populatedMessage, conversationId: isGroupExist._id },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            await NotificationSchema.deleteOne({
+                user: meId,
+                sender: invitation.invitedBy,
                 group: groupId,
                 type: 'group_invitation',
             });
@@ -420,12 +543,14 @@ class InvitationController {
                 _id: isInvitationExist._id,
             });
 
-            await NotificationSchema.deleteOne({
+            const a = await NotificationSchema.deleteOne({
                 user: toUserId,
                 sender: meId,
                 group: groupId,
                 type: 'group_invitation',
             });
+
+            console.log(a);
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Hủy lời mời thành công', isInvitationExist));
         } catch (error) {

@@ -38,6 +38,7 @@ const GroupInvitationSchema = new mongoose.Schema(
 );
 
 GroupInvitationSchema.index({ conversationId: 1, invitedBy: 1, invitedTo: 1 }, { unique: true });
+GroupInvitationSchema.index({ conversationId: 1, invitedTo: 1 }, { unique: true });
 
 const GroupInvitation = mongoose.model('GroupInvitation', GroupInvitationSchema);
 

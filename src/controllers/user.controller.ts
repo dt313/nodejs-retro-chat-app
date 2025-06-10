@@ -248,5 +248,77 @@ class UserController {
             next(error);
         }
     }
+
+    async getFriendsByUserId(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { userId } = req.params;
+            let meId = null;
+            const authHeader = req.headers['authorization'];
+            const token = authHeader?.split(' ')[1];
+
+            if (token) {
+                meId = await getUserIdFromAccessToken(token);
+            }
+
+            const user = await UserSchema.findById(userId);
+            if (!user) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
+                return;
+            }
+
+            const friendship = await Friendship.find({ $or: [{ user1: userId }, { user2: userId }] });
+            const friendIds = friendship.map((friend) =>
+                friend.user1.toString() === userId ? friend.user2.toString() : friend.user1.toString(),
+            );
+            let friends =
+                (await UserSchema.find({
+                    _id: { $in: friendIds },
+                }).select('avatar fullName username')) || [];
+
+            if (meId) {
+                const friendShips = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });
+                const myFriends = new Set(
+                    friendShips.map((fr) => (fr.user1.toString() === meId ? fr.user2.toString() : fr.user1.toString())),
+                );
+                const friendRequests = await FriendRequestSchema.find({
+                    status: 'pending',
+                    $or: [
+                        {
+                            sender: meId,
+                        },
+                        { receiver: meId },
+                    ],
+                    $nor: [
+                        {
+                            sender: { $in: Array.from(myFriends) },
+                            receiver: { $in: Array.from(myFriends) },
+                        },
+                    ],
+                });
+
+                const requestedByMe = new Set(
+                    friendRequests.filter((fr) => fr.sender.toString() === meId).map((fr) => fr.receiver.toString()),
+                );
+
+                const requestedByOther = new Set(
+                    friendRequests.filter((fr) => fr.receiver.toString() === meId).map((fr) => fr.sender.toString()),
+                );
+
+                friends = friends.map((friend: any) => {
+                    const userId = friend._id.toString();
+                    return {
+                        ...(friend.toObject?.() ?? friend),
+                        isFriendRequestedByOther: requestedByOther.has(userId),
+                        isFriendRequestedByMe: requestedByMe.has(userId),
+                        isFriend: myFriends.has(userId),
+                    };
+                });
+            }
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Friends fetched successfully', friends));
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 export default new UserController();
