@@ -11,6 +11,7 @@ import bcrypt from 'bcrypt';
 import { userValidate } from '@/validation';
 import { splitFullName } from '@/helper';
 import { storeImgToCloudinary } from '@/utils/cloudinary';
+
 class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
@@ -355,13 +356,22 @@ class UserController {
                     break;
                 case 'password':
                     // handle encode password
-
                     const salt = await bcrypt.genSalt(10);
                     const encodedPassword = await bcrypt.hash(value, salt);
                     user.password = encodedPassword;
 
                     break;
                 case 'username':
+                    const isExistUsername = await UserSchema.findOne({ username: value });
+                    if (isExistUsername) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, 'Username đã được sử dụng bởi người khác'),
+                        );
+                        return;
+                    } else {
+                        user.username = value;
+                    }
+                    break;
                 case 'bio':
                 case 'website':
                 case 'fbLink':
