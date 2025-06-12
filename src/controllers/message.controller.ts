@@ -197,6 +197,14 @@ class MessageController {
                     path: 'lastMessage.sender',
                     select: '_id avatar username fullName',
                 },
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
+                },
             ]);
             const populatedMessage = await newMessage.populate([
                 { path: 'sender', select: 'fullName avatar username' },
@@ -355,6 +363,14 @@ class MessageController {
                 {
                     path: 'lastMessage.sender',
                     select: '_id avatar username fullName',
+                },
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
                 },
             ]);
 
@@ -878,6 +894,14 @@ class MessageController {
                 {
                     path: 'lastMessage.sender',
                     select: '_id avatar username fullName',
+                },
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
                 },
             ]);
             // send notification to all members in conversation

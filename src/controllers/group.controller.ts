@@ -353,7 +353,7 @@ class GroupController {
                 return;
             }
 
-            const query = name
+            const query = !!name
                 ? {
                       $or: [
                           { fullName: { $regex: name, $options: 'i' } },

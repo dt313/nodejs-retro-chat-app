@@ -521,6 +521,7 @@ class ConversationController {
                     isParticipant.lastMessage = lastId;
                 }
             }
+
             isParticipant.lastMessageReadAt = new Date();
             await isParticipant.save();
 
@@ -552,6 +553,14 @@ class ConversationController {
                 {
                     path: 'lastMessage.sender',
                     select: '_id avatar username fullName',
+                },
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
                 },
             ]);
 

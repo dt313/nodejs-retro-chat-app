@@ -33,4 +33,9 @@ const conversationThumbnailUpload = multer({
     fileFilter: conversationThumbnailFileFilter,
 });
 
-export { attachmentsUpload, conversationThumbnailUpload };
+const userAvatarUpload = multer({
+    storage,
+    fileFilter: conversationThumbnailFileFilter,
+});
+
+export { attachmentsUpload, conversationThumbnailUpload, userAvatarUpload };

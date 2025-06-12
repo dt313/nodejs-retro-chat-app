@@ -9,6 +9,8 @@ import Friendship from '@/models/friendship.model';
 import ParticipantSchema from '@/models/participant.model';
 import bcrypt from 'bcrypt';
 import { userValidate } from '@/validation';
+import { splitFullName } from '@/helper';
+import { storeImgToCloudinary } from '@/utils/cloudinary';
 class UserController {
     async getInformation(req: AuthRequest, res: Response, next: NextFunction) {
         try {
@@ -316,6 +318,63 @@ class UserController {
             }
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Friends fetched successfully', friends));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+            const { type, value } = req.body;
+            let img = req.file as Express.Multer.File;
+
+            if (!type && (!img || !value)) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Type and value are required'));
+                return;
+            }
+
+            const user = await UserSchema.findById(meId);
+            if (!user) {
+                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
+                return;
+            }
+
+            switch (type) {
+                case 'fullName':
+                    user.fullName = value;
+                    // handle split name
+                    const { firstName, lastName } = splitFullName(value);
+                    user.firstName = firstName;
+                    user.lastName = lastName;
+                    break;
+                case 'avatar':
+                    // handle store img to cloudinary and update user avatar url
+                    const stream = await storeImgToCloudinary(img, 'user-avatar');
+                    user.avatar = (stream as any).secure_url;
+                    break;
+                case 'password':
+                    // handle encode password
+
+                    const salt = await bcrypt.genSalt(10);
+                    const encodedPassword = await bcrypt.hash(value, salt);
+                    user.password = encodedPassword;
+
+                    break;
+                case 'username':
+                case 'bio':
+                case 'website':
+                case 'fbLink':
+                case 'ghLink':
+                case 'lkLink':
+                case 'igLink':
+                    (user as any)[type] = value;
+                    break;
+            }
+
+            await user.save();
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Profile updated successfully', user));
         } catch (error) {
             next(error);
         }

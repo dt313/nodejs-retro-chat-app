@@ -12,6 +12,12 @@ const UserSchema = new Schema(
         email: { type: String, required: true, unique: true },
         password: { type: String, required: true },
         avatar: { type: String, default: '', required: false },
+        bio: { type: String, default: '', require: false },
+        website: { type: String, default: '', require: false },
+        fbLink: { type: String, default: '', require: false },
+        ghLink: { type: String, default: '', require: false },
+        lkLink: { type: String, default: '', require: false },
+        igLink: { type: String, default: '', require: false },
     },
     { timestamps: true },
 );

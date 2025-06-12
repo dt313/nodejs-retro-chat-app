@@ -21,8 +21,6 @@ const MessageSchema = new mongoose.Schema(
             required: true,
         },
 
-        readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
-
         attachments: {
             type: [mongoose.Schema.Types.ObjectId],
             ref: 'Attachment',
@@ -51,14 +49,6 @@ const MessageSchema = new mongoose.Schema(
         },
 
         isForwarded: { type: Boolean, default: false },
-
-        deletedBy: [
-            {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'User',
-                default: [],
-            },
-        ],
         isDeleted: { type: Boolean, default: false },
         deletedAt: { type: Date, default: null },
     },
