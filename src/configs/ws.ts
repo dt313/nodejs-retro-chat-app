@@ -9,7 +9,8 @@ import { randomUUID } from 'crypto';
 
 let wss: WebSocketServer;
 
-function initWSS(server: Server) {
+async function initWSS(server: Server) {
+    await redisClient.del('online_users');
     wss = new WebSocketServer({ server });
 
     console.log('WebSocket server initialized');
