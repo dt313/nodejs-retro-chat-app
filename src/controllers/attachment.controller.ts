@@ -39,7 +39,7 @@ class AttachmentController {
                 return;
             }
 
-            const imagesSchema = await ImageAttachmentSchema.find({ conversationId });
+            const imagesSchema = await ImageAttachmentSchema.find({ conversationId, isDeleted: false });
 
             const allImages = imagesSchema.flatMap((item) => item.images);
 
@@ -81,7 +81,7 @@ class AttachmentController {
                 return;
             }
 
-            const files = await AttachmentSchema.find({ conversationId }).select('name url size');
+            const files = await AttachmentSchema.find({ conversationId, isDeleted: false }).select('name url size');
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Get files of conversation successfully', files));
             return;
