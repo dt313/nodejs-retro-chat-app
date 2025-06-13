@@ -3,6 +3,7 @@ import { WebSocket } from 'ws';
 interface CustomWebSocket extends WebSocket {
     isAuthenticated: boolean;
     userId: string;
+    clientId: string;
 }
 
 export default CustomWebSocket;

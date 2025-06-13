@@ -1,10 +1,11 @@
 import { Server } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
-import { client, client as redisClient } from '@/configs/redis';
+import { client as redisClient } from '@/configs/redis';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
 import ParticipantSchema from '@/models/participant.model';
 import CustomWebSocket from '@/types/web-socket';
 import UserSchema from '@/models/user.model';
+import { randomUUID } from 'crypto';
 
 let wss: WebSocketServer;
 
@@ -17,9 +18,9 @@ function initWSS(server: Server) {
         console.log('Client connected');
         ws.isAuthenticated = false;
         ws.userId = '';
+        ws.clientId = randomUUID();
 
         // send online users
-
         ws.send(
             JSON.stringify({
                 type: 'online_users',
@@ -38,6 +39,8 @@ function initWSS(server: Server) {
                     const { token } = data;
                     const userId = await getUserIdFromAccessToken(token);
 
+                    // if
+
                     if (userId) {
                         ws.isAuthenticated = true;
                         ws.userId = userId;
@@ -45,17 +48,25 @@ function initWSS(server: Server) {
                     }
 
                     // send all socket clients the updated online users list
-                    wss.clients.forEach(async (client) => {
-                        client.send(
-                            JSON.stringify({
-                                type: 'new_online_user',
-                                data: {
-                                    onlineUser: userId,
-                                },
-                            }),
-                        );
-                    });
+                    for (const client of wss.clients) {
+                        const customClient = client as CustomWebSocket;
 
+                        try {
+                            customClient.send(
+                                JSON.stringify({
+                                    type: 'new_online_user',
+                                    data: {
+                                        onlineUser: userId,
+                                    },
+                                }),
+                            );
+                        } catch (err) {
+                            console.error('Lỗi khi gửi socket:', err);
+                        }
+                    }
+
+                    console.log('online user', Array.from(await redisClient.sMembers('online_users')));
+                    console.log('Số lượng client đang kết nối:', wss.clients.size);
                     break;
 
                 case 'TYPING':
@@ -106,7 +117,7 @@ function initWSS(server: Server) {
                     }),
                 );
             });
-            ws.isAuthenticated = true;
+            ws.isAuthenticated = false;
             ws.userId = '';
         });
 
