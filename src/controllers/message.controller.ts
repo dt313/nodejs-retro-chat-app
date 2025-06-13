@@ -548,13 +548,17 @@ class MessageController {
         try {
             const meId = req.payload?.userId;
             const { messageId } = req.params;
-            const { friendId, messageType } = req.body;
+            const { id, isConversation, messageType } = req.body;
 
             const result = messageValidate.forwardMessage.safeParse({
                 meId,
                 messageId,
-                friendId,
+                id,
+                isConversation,
+                messageType,
             });
+
+            let forwardConversation = null;
 
             if (!result.success) {
                 res.status(Status.BAD_REQUEST).json(
@@ -563,85 +567,93 @@ class MessageController {
                 return;
             }
 
-            const isExistFriend = await UserSchema.findById(friendId);
-            if (!isExistFriend) {
-                res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
-                return;
-            }
-
-            // find conversation between me and friend by participant of me and friend
-            const conversation = await ConversationSchema.aggregate([
-                { $match: { isGroup: false, isDeleted: false } },
-                {
-                    $lookup: {
-                        from: 'participants',
-                        localField: '_id',
-                        foreignField: 'conversationId',
-                        as: 'members',
+            if (!isConversation) {
+                const isExistFriend = await UserSchema.findById(id);
+                if (!isExistFriend) {
+                    res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
+                    return;
+                }
+                // find conversation between me and friend by participant of me and friend
+                const conversation = await ConversationSchema.aggregate([
+                    { $match: { isGroup: false, isDeleted: false } },
+                    {
+                        $lookup: {
+                            from: 'participants',
+                            localField: '_id',
+                            foreignField: 'conversationId',
+                            as: 'members',
+                        },
                     },
-                },
-                {
-                    $addFields: {
-                        memberIds: {
-                            $map: {
-                                input: '$members',
-                                as: 'm',
-                                in: '$$m.user',
+                    {
+                        $addFields: {
+                            memberIds: {
+                                $map: {
+                                    input: '$members',
+                                    as: 'm',
+                                    in: '$$m.user',
+                                },
                             },
                         },
                     },
-                },
-                {
-                    $match: {
-                        memberIds: { $all: [new Types.ObjectId(meId), new Types.ObjectId(friendId)] },
-                        $expr: { $eq: [{ $size: '$memberIds' }, 2] },
+                    {
+                        $match: {
+                            memberIds: { $all: [new Types.ObjectId(meId), new Types.ObjectId(id)] },
+                            $expr: { $eq: [{ $size: '$memberIds' }, 2] },
+                        },
                     },
-                },
-            ]);
+                ]);
 
-            if (conversation.length > 1) {
-                res.status(Status.BAD_REQUEST).json(
-                    errorResponse(Status.BAD_REQUEST, 'Failed to get or create conversation'),
-                );
-                return;
-            }
-
-            let newConversation = null;
-            if (conversation.length === 1) {
-                newConversation = conversation[0];
-
-                const participants = await ParticipantSchema.find({
-                    conversationId: newConversation._id,
-                    deletedAt: { $ne: null },
-                });
-
-                if (participants.length > 0) {
-                    for (const participant of participants) {
-                        participant.deletedAt = null;
-                        participant.jointAt = new Date();
-                        await participant.save();
-                    }
-                }
-            } else {
-                // create conversation 1-1
-                newConversation = await ConversationSchema.create({
-                    createdBy: meId,
-                });
-
-                // create participants
-                const meParticipant = await createParticipant(meId, newConversation._id, 'member');
-                const userParticipant = await createParticipant(friendId, newConversation._id, 'member');
-
-                if (!meParticipant || !userParticipant) {
+                if (conversation.length > 1) {
                     res.status(Status.BAD_REQUEST).json(
-                        errorResponse(Status.BAD_REQUEST, 'Failed to create participant'),
+                        errorResponse(Status.BAD_REQUEST, 'Failed to get or create conversation'),
                     );
                     return;
                 }
 
-                newConversation.participants.push(meParticipant);
-                newConversation.participants.push(userParticipant);
-                await newConversation.save();
+                if (conversation.length === 1) {
+                    forwardConversation = conversation[0];
+
+                    const participants = await ParticipantSchema.find({
+                        conversationId: forwardConversation._id,
+                        deletedAt: { $ne: null },
+                    });
+
+                    if (participants.length > 0) {
+                        for (const participant of participants) {
+                            participant.deletedAt = null;
+                            participant.jointAt = new Date();
+                            await participant.save();
+                        }
+                    }
+                } else {
+                    // create conversation 1-1
+                    forwardConversation = await ConversationSchema.create({
+                        createdBy: meId,
+                    });
+
+                    // create participants
+                    const meParticipant = await createParticipant(meId, forwardConversation._id, 'member');
+                    const userParticipant = await createParticipant(id, forwardConversation._id, 'member');
+
+                    if (!meParticipant || !userParticipant) {
+                        res.status(Status.BAD_REQUEST).json(
+                            errorResponse(Status.BAD_REQUEST, 'Failed to create participant'),
+                        );
+                        return;
+                    }
+
+                    forwardConversation.participants.push(meParticipant);
+                    forwardConversation.participants.push(userParticipant);
+                    await forwardConversation.save();
+                }
+            } else {
+                const isExistConversation = await ConversationSchema.findOne({ _id: id, isDeleted: false });
+                if (!isExistConversation) {
+                    res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy cuộc hội thoại'));
+                    return;
+                }
+
+                forwardConversation = isExistConversation;
             }
 
             let newAttachments: any[] = [];
@@ -653,7 +665,7 @@ class MessageController {
                     const newAttachment = await AttachmentSchema.create({
                         ...isAttachment.toObject(),
                         _id: new Types.ObjectId(),
-                        conversationId: newConversation._id,
+                        conversationId: forwardConversation._id,
                         sender: meId,
                         reactions: [],
                         isDeleted: false,
@@ -669,7 +681,7 @@ class MessageController {
                 if (oldImage) {
                     const newImageAttachment = await ImageAttachmentSchema.create({
                         images: oldImage.images,
-                        conversationId: newConversation._id,
+                        conversationId: forwardConversation._id,
                         sender: meId,
                         reactions: [],
                         isDeleted: false,
@@ -687,7 +699,7 @@ class MessageController {
 
             // Tạo message mới
             const forwardedMessage = await MessageSchema.create({
-                conversationId: newConversation._id,
+                conversationId: forwardConversation._id,
                 sender: meId,
                 content: newContent,
                 messageType: getMessageType({
@@ -700,9 +712,9 @@ class MessageController {
                 isForwarded: true,
             });
 
-            res.status(Status.OK).json(successResponse(Status.OK, 'Forward message successfully', forwardedMessage));
-
-            const participants = await ParticipantSchema.find({ conversationId: newConversation._id }).select('user');
+            const participants = await ParticipantSchema.find({ conversationId: forwardConversation._id }).select(
+                'user',
+            );
             const participantUserIds = new Set(participants.map((p) => p.user.toString()));
             // ws send message to all members in group
 
@@ -729,7 +741,7 @@ class MessageController {
                                 type: 'message',
                                 data: {
                                     message: populatedMessage,
-                                    conversationId: newConversation._id,
+                                    conversationId: forwardConversation._id,
                                 },
                             }),
                         );
@@ -737,7 +749,7 @@ class MessageController {
                 });
             }
 
-            newConversation.lastMessage = {
+            forwardConversation.lastMessage = {
                 content: populatedMessage.content || '',
                 type: populatedMessage.messageType || 'text',
                 sender: new Types.ObjectId(meId),
@@ -746,8 +758,8 @@ class MessageController {
             };
 
             const savedConversation = await ConversationSchema.findOneAndUpdate(
-                { _id: newConversation._id, isDeleted: false },
-                { lastMessage: newConversation.lastMessage },
+                { _id: forwardConversation._id, isDeleted: false },
+                { lastMessage: forwardConversation.lastMessage },
                 { new: true },
             );
 
@@ -789,6 +801,9 @@ class MessageController {
                     }
                 });
             }
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Forward message successfully', forwardedMessage));
+            return;
         } catch (error) {
             next(error);
         }

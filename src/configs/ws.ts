@@ -1,5 +1,5 @@
 import { Server } from 'http';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 import { client as redisClient } from '@/configs/redis';
 import { getUserIdFromAccessToken } from '@/helper/jwt';
 import ParticipantSchema from '@/models/participant.model';

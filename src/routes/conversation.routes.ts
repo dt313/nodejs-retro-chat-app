@@ -7,6 +7,7 @@ const router = express.Router();
 router.get('/search', verifyAccessToken, conversationController.getAllConversationsByName);
 router.get('/', conversationController.getAllConversations);
 router.get('/me', verifyAccessToken, conversationController.getConversationsByMe);
+router.get('/forward', verifyAccessToken, conversationController.getForwardConversations);
 router.put(
     '/:conversationId',
     verifyAccessToken,

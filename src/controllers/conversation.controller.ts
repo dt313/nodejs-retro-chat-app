@@ -18,6 +18,7 @@ import { Model, Types } from 'mongoose';
 import { storeImgToCloudinary } from '@/utils/cloudinary';
 import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
+import FriendshipSchema from '@/models/friendship.model';
 
 class ConversationController {
     async createGroupConversation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -148,6 +149,110 @@ class ConversationController {
                 res.json(successResponse(Status.OK, 'Get all conversations by name successfully', conversations));
             }
             return;
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getForwardConversations(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const meId = req.payload?.userId;
+
+            const { name } = req.query || '';
+            const searchName = typeof name === 'string' ? name : '';
+
+            const isExistUser = await UserSchema.findById(meId);
+            if (!isExistUser) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Invalid user'));
+                return;
+            }
+
+            // conversations
+            const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
+            const joinedConversationIds = participants.map((p) => p.conversationId);
+            const baseQuery = {
+                isDeleted: false,
+                $or: [{ _id: { $in: joinedConversationIds } }],
+            };
+
+            const myConversations = await ConversationSchema.find(baseQuery)
+                .select('name thumbnail isGroup participants lastMessage')
+                .populate({
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                })
+                .sort({ 'lastMessage.sentAt': -1 })
+                .lean();
+
+            const result = await Promise.all(
+                myConversations.map(async (conv) => {
+                    if (!conv.isGroup) {
+                        const target: any = conv.participants.find((p: any) => p?.user?._id.toString() !== meId);
+
+                        return {
+                            _id: conv._id,
+                            thumbnail: target?.user?.avatar,
+                            name: target?.user?.fullName,
+                            isGroup: conv.isGroup,
+                            isConversation: true,
+                            userId: target?.user?._id,
+                        };
+                    }
+                    return {
+                        _id: conv._id,
+                        thumbnail: conv.thumbnail,
+                        name: conv.name,
+                        userId: null,
+                        isGroup: conv.isGroup,
+                        isConversation: true,
+                    };
+                }),
+            );
+
+            const friendship = await FriendshipSchema.find({ $or: [{ user1: meId }, { user2: meId }] });
+
+            const userIds = result
+                .map((conv) => {
+                    if (!conv.isGroup && conv.userId) {
+                        return conv.userId.toString();
+                    }
+                })
+                .filter(Boolean);
+
+            const friendIds = friendship.map((friend) =>
+                friend.user1.toString() === meId ? friend.user2.toString() : friend.user1.toString(),
+            );
+            const friends = await UserSchema.find({
+                _id: { $in: friendIds },
+            }).select('avatar fullName username');
+
+            const structuredFriends = friends.map((f) => {
+                return {
+                    _id: f._id,
+                    thumbnail: f.avatar,
+                    name: f.fullName,
+                    userId: f._id,
+                    isGroup: false,
+                    isConversation: false,
+                };
+            });
+
+            const filteredResult = [...result, ...structuredFriends].filter((conv) => {
+                if (userIds.includes(conv._id.toString())) {
+                    return false;
+                }
+
+                if (conv.name.toLowerCase().includes(searchName.toLowerCase())) {
+                    return true;
+                }
+            });
+
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Get forward conversations successfully', filteredResult),
+            );
         } catch (error) {
             next(error);
         }
