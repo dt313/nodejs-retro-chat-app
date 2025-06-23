@@ -379,6 +379,7 @@ class ConversationController {
             const isParticipant = await ParticipantSchema.findOne({
                 conversationId,
                 user: meId,
+                deletedAt: null,
             });
 
             if (!isParticipant) {
@@ -393,8 +394,10 @@ class ConversationController {
                 createdAt?: { $lt?: string; $gt?: string; $gte?: string };
             }
 
-            // const filter: MessageFilter = { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
-            const filter: MessageFilter = { conversationId };
+            const filter: MessageFilter = conversation?.isGroup
+                ? { conversationId }
+                : { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
+            // const filter: MessageFilter = { conversationId };
 
             if (before && typeof before === 'string') {
                 filter.createdAt = { $lt: before };
@@ -1173,10 +1176,6 @@ class ConversationController {
 
                 await isExistConversation.save();
 
-                res.status(Status.OK).json(
-                    successResponse(Status.OK, 'Leave group conversation successfully', isParticipant),
-                );
-
                 // new message
                 const newMessage = await MessageSchema.create({
                     conversationId: isExistConversation._id,
@@ -1211,11 +1210,10 @@ class ConversationController {
             } else {
                 isParticipant.deletedAt = new Date();
                 await isParticipant.save();
-
-                res.status(Status.OK).json(
-                    successResponse(Status.OK, 'Leave conversation successfully', isParticipant),
-                );
             }
+            res.status(Status.OK).json(
+                successResponse(Status.OK, 'Leave conversation successfully', isExistConversation),
+            );
         } catch (error) {
             next(error);
         }
