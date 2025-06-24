@@ -206,13 +206,6 @@ class UserController {
         }
     }
 
-    async updateUser(req: Request, res: Response, next: NextFunction) {
-        try {
-        } catch (error) {
-            next(error);
-        }
-    }
-
     async deleteUser(req: Request, res: Response, next: NextFunction) {
         try {
         } catch (error) {

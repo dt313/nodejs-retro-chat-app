@@ -337,6 +337,7 @@ class ConversationController {
                     path: 'lastMessage.sender',
                     select: '_id avatar username fullName',
                 })
+                .select('isGroup createdBy participants name thumbnail isPrivate isDelete lastMessage')
                 .sort({ 'lastMessage.sentAt': -1 });
 
             res.json(successResponse(Status.OK, 'Get conversation by me successfully', conversations || []));
