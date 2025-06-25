@@ -746,6 +746,7 @@ class ConversationController {
                 messageType: { $in: ['text', 'text-file', 'text-image', 'text-image-file'] },
                 content: { $regex: query, $options: 'i' },
                 createdAt: { $gte: isParticipant.jointAt.toISOString() },
+                isDeleted: false,
             })
                 .populate('sender', '_id avatar username fullName')
                 .sort({ createdAt: -1 });
@@ -1286,12 +1287,10 @@ class ConversationController {
                     isExistConversation.name = value;
                     notificationContent = `group-name-updated`;
                     break;
-                case 'backgroundUrl':
-                    if (img) {
-                        const stream = await storeImgToCloudinary(img, 'conversation-background');
-                        isExistConversation.backgroundUrl = (stream as any).secure_url;
-                        notificationContent = `background-url-updated`;
-                    }
+                case 'theme':
+                    isExistConversation.theme = value;
+                    notificationContent = `theme-updated`;
+
                     break;
                 case 'nickname':
                     if (isExistConversation.isGroup) {
@@ -1386,6 +1385,10 @@ class ConversationController {
             const updatedConversation = await isExistConversation.save();
             const populatedConversation = await ConversationSchema.populate(updatedConversation, [
                 {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+                {
                     path: 'pinnedMessage',
                     select: 'content sender',
                     populate: {
@@ -1401,6 +1404,8 @@ class ConversationController {
                     },
                 },
             ]);
+
+            console.log(populatedConversation);
 
             if (notificationContent) {
                 const newMessage = await MessageSchema.create({

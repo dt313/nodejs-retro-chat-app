@@ -3,9 +3,9 @@ import mongoose from 'mongoose';
 const ConversationSchema = new mongoose.Schema(
     {
         isGroup: { type: Boolean, default: false },
-        name: { type: String, default: null },
+        name: { type: String, default: null, maxLength: 100 },
         thumbnail: { type: String, default: null },
-        backgroundUrl: { type: String, default: null },
+        theme: { type: String, default: null },
         description: { type: String, default: null },
         rules: { type: String, default: null },
         createdBy: {
