@@ -16,10 +16,10 @@ import fs from 'fs';
 const app = express();
 
 // change on production
-// const options = {
-//     key: fs.readFileSync(path.join(__dirname, '../cert/key.pem')),
-//     cert: fs.readFileSync(path.join(__dirname, '../cert/cert.pem')),
-// };
+const options = {
+    key: fs.readFileSync(path.join(__dirname, '../cert/key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '../cert/cert.pem')),
+};
 
 const server = https.createServer(options, app);
 db.connectDB();

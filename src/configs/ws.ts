@@ -210,6 +210,7 @@ async function initWSS(server: Server) {
                     });
                     break;
                 case 'CALL':
+                case 'VIDEO_CALL':
                     const phoneSender = data.data.sender;
                     const toConversation = data.data.receiver;
 
@@ -239,7 +240,7 @@ async function initWSS(server: Server) {
                         wss,
                         toConversation.conversationId,
                         {
-                            type: 'incoming_call',
+                            type: data.type === 'VIDEO_CALL' ? 'incoming_video_call' : 'incoming_call',
                             data: {
                                 sender: phoneSender,
                                 receiver: toConversation,
@@ -290,6 +291,17 @@ async function initWSS(server: Server) {
                         data.data.conversationId,
                         {
                             type: 'call_end',
+                            data: data.data,
+                        },
+                        data.data.excludeId,
+                    );
+                    break;
+                case 'CALL_REJECT':
+                    broadcastToConversation(
+                        wss,
+                        data.data.conversationId,
+                        {
+                            type: 'call_reject',
                             data: data.data,
                         },
                         data.data.excludeId,
