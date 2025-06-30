@@ -244,6 +244,7 @@ async function initWSS(server: Server) {
                             data: {
                                 sender: phoneSender,
                                 receiver: toConversation,
+                                conversationId: data.data.conversationId,
                             },
                         },
                         phoneSender.id,
