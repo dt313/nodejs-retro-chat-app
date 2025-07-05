@@ -28,6 +28,7 @@ const NotificationSchema = new mongoose.Schema(
                 'remove_from_conversation',
                 'change_admin_role',
                 'change_member_role',
+                'mentioned',
             ],
             required: true,
         },

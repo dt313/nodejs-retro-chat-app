@@ -5,7 +5,7 @@ import ImageAttachmentSchema from '@/models/images-attachment.model';
 import MessageSchema from '@/models/message.model';
 import ReactionSchema from '@/models/reaction.model';
 import UserSchema from '@/models/user.model';
-
+import NotificationSchema from '@/models/notification.model';
 import { AuthRequest } from '@/types/auth-request';
 import { Status } from '@/types/response';
 import { successResponse, errorResponse } from '@/utils/response';
@@ -23,7 +23,7 @@ class MessageController {
         try {
             const meId = req.payload?.userId;
             const { conversationId } = req.params;
-            const { replyTo, replyType, content, isGroup } = req.body;
+            const { replyTo, replyType, content, isGroup, mentionedUserIds } = req.body;
             const attachments = req.files as Express.Multer.File[]; // Cast to the correct type
 
             const result = messageValidate.createMessage.safeParse({
@@ -48,6 +48,16 @@ class MessageController {
                 res.status(Status.UNAUTHORIZED).json(errorResponse(Status.UNAUTHORIZED, 'Bạn chưa đăng nhập'));
                 return;
             }
+
+            const mentionedUserArray = mentionedUserIds ? JSON.parse(mentionedUserIds) : [];
+
+            if (mentionedUserArray.length > 0 && !isGroup) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Mentioned users must be in group conversation'),
+                );
+                return;
+            }
+
             const meIdObjectId = new Types.ObjectId(meId);
 
             const isExistConversation = await ConversationSchema.findOne({
@@ -72,6 +82,7 @@ class MessageController {
                 return;
             }
 
+            // if user deleted conversation before, and create message is in 1-1 conversation, we need to restore conversation and participants for this user
             if (isGroup === 'false') {
                 const participants = await ParticipantSchema.find({ conversationId, deletedAt: { $ne: null } });
 
@@ -84,6 +95,7 @@ class MessageController {
                 }
             }
 
+            // handle store images and attachments
             let newImages = null;
             // if message has attachments
             const newAttachments = new Set<Types.ObjectId>();
@@ -131,6 +143,7 @@ class MessageController {
                 }
             }
 
+            // get message type
             const messageType = getMessageType({
                 content: !!content,
                 file: newAttachments?.size > 0,
@@ -141,8 +154,21 @@ class MessageController {
                 res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Message type error'));
                 return;
             }
-            // create message in group conversation
 
+            // handle mentioned users - check participant is in conversation
+            const mentionedUsersParticipants = await ParticipantSchema.find({
+                user: { $in: mentionedUserArray },
+                conversationId,
+            });
+
+            if (mentionedUsersParticipants.length !== mentionedUserArray.length) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Chỉ có thể mention thành viên của nhóm'),
+                );
+                return;
+            }
+
+            // create message
             const newMessage = await MessageSchema.create({
                 conversationId,
                 sender: meIdObjectId,
@@ -152,6 +178,10 @@ class MessageController {
                 messageType,
                 attachments: Array.from(newAttachments),
                 images: newImages,
+                mentionedUsers:
+                    mentionedUserArray.length > 0
+                        ? mentionedUserArray.map((u: any) => new Types.ObjectId(String(u)))
+                        : [],
             });
 
             isExistConversation.lastMessage = {
@@ -218,6 +248,10 @@ class MessageController {
                         select: 'fullName firstName avatar username',
                     },
                 },
+                {
+                    path: 'mentionedUsers',
+                    select: '_id avatar username fullName',
+                },
             ]);
 
             const participants = await ParticipantSchema.find({ conversationId }).select('user');
@@ -244,10 +278,7 @@ class MessageController {
                         );
                     }
                 });
-            }
-
-            // ws send last message to all members in group
-            if (socket) {
+                // ws send last message to all members in group
                 socket.clients.forEach((client) => {
                     const customClient = client as CustomWebSocket;
                     if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
@@ -261,6 +292,33 @@ class MessageController {
                         );
                     }
                 });
+
+                // send notification to mentioned users
+                if (mentionedUserArray.length > 0) {
+                    // create notification for mentioned users
+                    const notification = await NotificationSchema.create({
+                        user: mentionedUserArray,
+                        type: 'mentioned',
+                        group: conversationId,
+                        sender: meIdObjectId,
+                    });
+
+                    const populatedNotification = await NotificationSchema.findOne({
+                        _id: notification._id,
+                    })
+                        .populate('sender', 'fullName avatar id username')
+                        .populate('user', 'fullName avatar id username')
+                        .populate('group', 'id name thumbnail');
+
+                    socket.clients.forEach((client) => {
+                        const customClient = client as CustomWebSocket;
+                        if (customClient.isAuthenticated && new Set(mentionedUserArray).has(customClient.userId)) {
+                            customClient.send(
+                                JSON.stringify({ type: 'notification', data: { notification: populatedNotification } }),
+                            );
+                        }
+                    });
+                }
             }
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Create message successfully', populatedMessage));
@@ -357,7 +415,7 @@ class MessageController {
                     path: 'participants',
                     populate: {
                         path: 'user',
-                        select: '_id avatar username fullName',
+                        select: '_id avatar username fullName email',
                     },
                 },
                 {
@@ -731,6 +789,7 @@ class MessageController {
                     },
                 },
             ]);
+
             const socket = ws.getWSS();
             if (socket) {
                 socket.clients.forEach((client) => {

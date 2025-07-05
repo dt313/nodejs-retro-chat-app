@@ -447,6 +447,10 @@ class ConversationController {
                         select: 'fullName firstName avatar username',
                     },
                 })
+                .populate({
+                    path: 'mentionedUsers',
+                    select: '_id avatar username fullName',
+                })
                 .sort(after ? { createdAt: 1 } : { createdAt: -1 })
                 .limit(Number(limit));
 
