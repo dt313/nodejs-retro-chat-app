@@ -15,6 +15,11 @@ const MessageSchema = new mongoose.Schema(
         content: {
             type: String,
         },
+        mentionedUsers: {
+            type: [mongoose.Schema.Types.ObjectId],
+            ref: 'User',
+            default: [],
+        },
         messageType: {
             type: String,
             enum: ['text', 'text-file', 'image', 'text-image', 'file', 'text-image-file', 'file-image', 'notification'],

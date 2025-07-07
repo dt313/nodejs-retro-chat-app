@@ -216,6 +216,7 @@ async function initWSS(server: Server) {
 
                     const conversation = await ConversationSchema.findById(toConversation.conversationId);
 
+                    console.log('video', conversation);
                     if (!conversation) {
                         // send error for sender
                         const senderClient = Array.from(wss.clients).find((client) => {
