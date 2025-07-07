@@ -295,29 +295,28 @@ class MessageController {
 
                 // send notification to mentioned users
                 if (mentionedUserArray.length > 0) {
-                    // create notification for mentioned users
-                    const notification = await NotificationSchema.create({
-                        user: mentionedUserArray,
-                        type: 'mentioned',
-                        group: conversationId,
-                        sender: meIdObjectId,
-                    });
-
-                    const populatedNotification = await NotificationSchema.findOne({
-                        _id: notification._id,
-                    })
-                        .populate('sender', 'fullName avatar id username')
-                        .populate('user', 'fullName avatar id username')
-                        .populate('group', 'id name thumbnail');
-
-                    socket.clients.forEach((client) => {
+                    for (const client of socket.clients) {
                         const customClient = client as CustomWebSocket;
                         if (customClient.isAuthenticated && new Set(mentionedUserArray).has(customClient.userId)) {
+                            // create notification for mentioned users
+                            const notification = await NotificationSchema.create({
+                                user: customClient.userId,
+                                type: 'mentioned',
+                                group: conversationId,
+                                sender: meIdObjectId,
+                            });
+
+                            const populatedNotification = await NotificationSchema.findOne({
+                                _id: notification._id,
+                            })
+                                .populate('sender', 'fullName avatar id username')
+                                .populate('user', 'fullName avatar id username')
+                                .populate('group', 'id name thumbnail');
                             customClient.send(
                                 JSON.stringify({ type: 'notification', data: { notification: populatedNotification } }),
                             );
                         }
-                    });
+                    }
                 }
             }
 
