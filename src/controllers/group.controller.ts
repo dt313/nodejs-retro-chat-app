@@ -38,7 +38,9 @@ class GroupController {
                 isDeleted: false,
                 $or: [{ name: { $regex: q, $options: 'i' } }],
             })
-                .select('-password -lastMessage -isDeleted -__v -password -updatedAt -deletedBy')
+                .select(
+                    '-password -lastMessage -isDeleted -__v -password -deletedBy -description -rules -theme -backgroundUrl ',
+                )
                 .populate({
                     path: 'participants',
                     select: 'user role',

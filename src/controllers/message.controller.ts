@@ -14,7 +14,7 @@ import { Response, NextFunction } from 'express';
 import ws from '@/configs/ws';
 import CustomWebSocket from '@/types/web-socket';
 import ParticipantSchema from '@/models/participant.model';
-import { storeFileToCloudinary, storeImgToCloudinary } from '@/utils/cloudinary';
+import { storeFileToCloudinary, storeImgToCloudinary, storeVideoToCloudinary } from '@/utils/cloudinary';
 import { messageValidate, reactionValidate } from '@/validation';
 import { ReactionMessageType, reactionModelMap } from '@/utils/model-map';
 
@@ -101,8 +101,16 @@ class MessageController {
             const newAttachments = new Set<Types.ObjectId>();
             if (attachments && attachments.length > 0) {
                 // get all image types
-                const files = attachments.filter((attachment) => !attachment.mimetype.startsWith('image/'));
                 const images = attachments.filter((attachment) => attachment.mimetype.startsWith('image/'));
+                const videos = attachments.filter((attachment) => attachment.mimetype.startsWith('video/'));
+                const audios = attachments.filter((attachment) => attachment.mimetype.startsWith('audio/'));
+                const files = attachments.filter(
+                    (attachment) =>
+                        !attachment.mimetype.startsWith('image/') &&
+                        !attachment.mimetype.startsWith('video/') &&
+                        !attachment.mimetype.startsWith('audio/'),
+                );
+
                 if (files.length > 0) {
                     for (const file of files) {
                         const stream = await storeFileToCloudinary(file, 'conversation-files');
@@ -120,6 +128,43 @@ class MessageController {
                         newAttachments.add(newAttachment._id);
                     }
                 }
+
+                if (videos.length > 0) {
+                    for (const video of videos) {
+                        const stream = await storeVideoToCloudinary(video, 'conversation-videos');
+                        const fileUrl = (stream as any).secure_url;
+                        const fileName = (stream as any).public_id.split('/').pop();
+
+                        const newAttachment = await AttachmentSchema.create({
+                            url: fileUrl,
+                            name: fileName,
+                            type: 'video',
+                            size: video.size,
+                            conversationId,
+                            sender: meIdObjectId,
+                        });
+                        newAttachments.add(newAttachment._id);
+                    }
+                }
+
+                if (audios.length > 0) {
+                    for (const audio of audios) {
+                        const stream = await storeVideoToCloudinary(audio, 'conversation-audios');
+                        const fileUrl = (stream as any).secure_url;
+                        const fileName = (stream as any).public_id.split('/').pop();
+
+                        const newAttachment = await AttachmentSchema.create({
+                            url: fileUrl,
+                            name: fileName,
+                            type: 'audio',
+                            size: audio.size,
+                            conversationId,
+                            sender: meIdObjectId,
+                        });
+                        newAttachments.add(newAttachment._id);
+                    }
+                }
+
                 if (images.length > 0) {
                     const imageUrls = new Set();
                     // save image to cloud

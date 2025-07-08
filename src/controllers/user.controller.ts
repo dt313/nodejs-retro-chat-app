@@ -42,7 +42,7 @@ class UserController {
             let users = await UserSchema.find({
                 _id: { $ne: meId },
                 $or: [{ fullName: { $regex: q, $options: 'i' } }, { username: { $regex: q, $options: 'i' } }],
-            });
+            }).select('-password -bio -website -fbLink -ghLink -lkLink -igLink');
 
             if (meId) {
                 const friendShips = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });

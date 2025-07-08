@@ -1,13 +1,11 @@
 import { z } from 'zod';
-import { reaction } from './reaction.validate';
-import messageController from '@/controllers/message.controller';
 
 export const forwardMessage = z.object({
     meId: z.string().min(1, { message: 'User ID is required' }),
     messageId: z.string().min(1, { message: 'Message ID is required' }),
     id: z.string().min(1, { message: 'Friend ID is required' }),
     isConversation: z.boolean(),
-    messageType: z.enum(['text', 'image', 'file']),
+    messageType: z.enum(['text', 'image', 'file', 'video', 'audio']),
 });
 
 export const createMessage = z.object({

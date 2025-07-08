@@ -10,17 +10,14 @@ import db from './configs/db';
 import redis from './configs/redis';
 import ws from './configs/ws';
 import route from './routes';
-import { errorHandler } from './middlewares/error-handle';
 import fs from 'fs';
+import { errorHandler } from './middlewares/error-handle';
 
 const app = express();
-
-// change on production
 const options = {
-    key: fs.readFileSync(path.join(__dirname, '../cert/key.pem')),
-    cert: fs.readFileSync(path.join(__dirname, '../cert/cert.pem')),
+    key: fs.readFileSync(path.join(__dirname, '../cert', 'key.pem')),
+    cert: fs.readFileSync(path.join(__dirname, '../cert', 'cert.pem')),
 };
-
 const server = https.createServer(options, app);
 db.connectDB();
 redis.connect();
