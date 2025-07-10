@@ -115,11 +115,10 @@ class MessageController {
                     for (const file of files) {
                         const stream = await storeFileToCloudinary(file, 'conversation-files');
                         const fileUrl = (stream as any).secure_url;
-                        const fileName = (stream as any).public_id.split('/').pop();
 
                         const newAttachment = await AttachmentSchema.create({
                             url: fileUrl,
-                            name: fileName,
+                            name: file.originalname,
                             type: 'file',
                             size: file.size,
                             conversationId,
@@ -133,11 +132,10 @@ class MessageController {
                     for (const video of videos) {
                         const stream = await storeVideoToCloudinary(video, 'conversation-videos');
                         const fileUrl = (stream as any).secure_url;
-                        const fileName = (stream as any).public_id.split('/').pop();
 
                         const newAttachment = await AttachmentSchema.create({
                             url: fileUrl,
-                            name: fileName,
+                            name: video.originalname,
                             type: 'video',
                             size: video.size,
                             conversationId,

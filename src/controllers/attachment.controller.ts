@@ -82,7 +82,7 @@ class AttachmentController {
             }
 
             const files = await AttachmentSchema.find({ conversationId, type: 'file', isDeleted: false }).select(
-                'name url size',
+                'name url size createdAt',
             );
 
             res.status(Status.OK).json(successResponse(Status.OK, 'Get files of conversation successfully', files));

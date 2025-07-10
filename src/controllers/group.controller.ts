@@ -27,7 +27,9 @@ class GroupController {
             const authHeader = req.headers['authorization'];
             const token = authHeader?.split(' ')[1];
 
-            const { q } = req.query;
+            const { q, page = 1 } = req.query;
+            const limit = 30;
+            const skip = (Number(page) - 1) * Number(limit);
 
             if (token) {
                 meId = await getUserIdFromAccessToken(token);
@@ -41,6 +43,8 @@ class GroupController {
                 .select(
                     '-password -lastMessage -isDeleted -__v -password -deletedBy -description -rules -theme -backgroundUrl ',
                 )
+                .skip(skip)
+                .limit(Number(limit))
                 .populate({
                     path: 'participants',
                     select: 'user role',

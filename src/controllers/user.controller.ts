@@ -33,7 +33,9 @@ class UserController {
             const authHeader = req.headers['authorization'];
             const token = authHeader?.split(' ')[1];
 
-            const { q } = req.query;
+            const { q, page = 1 } = req.query;
+            const limit = 30;
+            const skip = (Number(page) - 1) * Number(limit);
 
             if (token) {
                 meId = await getUserIdFromAccessToken(token);
@@ -42,7 +44,10 @@ class UserController {
             let users = await UserSchema.find({
                 _id: { $ne: meId },
                 $or: [{ fullName: { $regex: q, $options: 'i' } }, { username: { $regex: q, $options: 'i' } }],
-            }).select('-password -bio -website -fbLink -ghLink -lkLink -igLink');
+            })
+                .select('-password -bio -website -fbLink -ghLink -lkLink -igLink')
+                .skip(skip)
+                .limit(Number(limit));
 
             if (meId) {
                 const friendShips = await Friendship.find({ $or: [{ user1: meId }, { user2: meId }] });

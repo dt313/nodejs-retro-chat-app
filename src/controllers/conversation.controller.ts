@@ -317,6 +317,10 @@ class ConversationController {
         try {
             const meId = req.payload?.userId;
 
+            const { page = 1 } = req.query;
+            const limit = 20;
+            const skip = (Number(page) - 1) * Number(limit);
+
             const participants = await ParticipantSchema.find({ user: meId, deletedAt: null });
 
             const joinedConversationIds = participants.map((p) => p.conversationId);
@@ -338,7 +342,9 @@ class ConversationController {
                     select: '_id avatar username fullName',
                 })
                 .select('isGroup createdBy participants name thumbnail isPrivate isDelete lastMessage')
-                .sort({ 'lastMessage.sentAt': -1 });
+                .sort({ 'lastMessage.sentAt': -1 })
+                .skip(skip)
+                .limit(limit);
 
             res.json(successResponse(Status.OK, 'Get conversation by me successfully', conversations || []));
         } catch (error) {
