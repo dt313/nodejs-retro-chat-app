@@ -9,12 +9,7 @@ export const ACCEPTED_EXTENSIONS = FILE_ACCEPT_LIST.split(',').map((ext) => ext.
 
 function attachmentFileFilter(req: any, file: any, cb: Function) {
     const ext = '.' + file.originalname.split('.').pop().toLowerCase();
-    if (
-        file.mimetype.startsWith('image/') ||
-        file.mimetype.startsWith('text/') ||
-        file.mimetype.startsWith('video/') ||
-        file.mimetype.startsWith('audio/')
-    ) {
+    if (file.mimetype.startsWith('text/') || file.mimetype.startsWith('video/') || file.mimetype.startsWith('audio/')) {
         cb(null, true);
     } else if (ACCEPTED_EXTENSIONS.includes(ext)) {
         cb(null, true);
@@ -24,7 +19,8 @@ function attachmentFileFilter(req: any, file: any, cb: Function) {
 }
 
 function conversationThumbnailFileFilter(req: any, file: any, cb: Function) {
-    if (file.mimetype.startsWith('image/')) {
+    const ext = '.' + file.originalname.split('.').pop().toLowerCase();
+    if ('.jpg,.jpeg,.png'.includes(ext)) {
         cb(null, true);
     } else {
         cb(new Error('Chỉ chấp nhận file hình ảnh'), false);

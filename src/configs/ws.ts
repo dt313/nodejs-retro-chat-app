@@ -216,7 +216,6 @@ async function initWSS(server: Server) {
 
                     const conversation = await ConversationSchema.findById(toConversation.conversationId);
 
-                    console.log('video', conversation);
                     if (!conversation) {
                         // send error for sender
                         const senderClient = Array.from(wss.clients).find((client) => {
@@ -311,7 +310,6 @@ async function initWSS(server: Server) {
                     break;
 
                 case 'ANSWER':
-                    console.log(' data.data.excludeId,', data.data.excludeId);
                     broadcastToConversation(
                         wss,
                         data.data.conversationId,

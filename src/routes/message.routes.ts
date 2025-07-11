@@ -6,6 +6,7 @@ import { attachmentsUpload } from '@/configs/multer';
 const router = express.Router();
 
 router.post('/to/:conversationId', verifyAccessToken, attachmentsUpload.array('attachments'), messageController.create);
+router.post('/call-message/to/:conversationId/', verifyAccessToken, messageController.createCallMessage);
 router.post('/reaction/cancel/:reactionId', verifyAccessToken, messageController.cancelReaction);
 router.post('/reaction/:messageId', verifyAccessToken, messageController.reaction);
 router.post('/forward/:messageId', verifyAccessToken, messageController.forwardMessage);

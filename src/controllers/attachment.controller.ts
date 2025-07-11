@@ -4,7 +4,7 @@ import ConversationSchema from '@/models/conversation.model';
 import ImageAttachmentSchema from '@/models/images-attachment.model';
 import AttachmentSchema from '@/models/attachment.model';
 
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { errorResponse, successResponse } from '@/utils/response';
 import { Status } from '@/types/response';
 import ParticipantSchema from '@/models/participant.model';
@@ -41,7 +41,7 @@ class AttachmentController {
 
             const imagesSchema = await ImageAttachmentSchema.find({ conversationId, isDeleted: false });
 
-            const allImages = imagesSchema.flatMap((item) => item.images);
+            const allImages = imagesSchema.flatMap((item) => item.images).reverse();
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Get images of conversation successfully', allImages),

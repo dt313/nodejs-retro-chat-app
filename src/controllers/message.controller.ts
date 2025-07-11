@@ -370,6 +370,162 @@ class MessageController {
         }
     }
 
+    async createCallMessage(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { conversationId } = req.params;
+            const { type, isGroup = false, sender } = req.body;
+
+            const isExistSender = await UserSchema.findById(sender);
+
+            if (!isExistSender) {
+                res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Không tìm thấy sender'));
+                return;
+            }
+
+            const isExistConversation = await ConversationSchema.findOne({
+                _id: conversationId,
+                isGroup: false,
+                isDeleted: false,
+            });
+
+            if (!isExistConversation) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Không tìm thấy cuộc trò chuyện'),
+                );
+                return;
+            }
+
+            // if user is not in conversation
+            let isParticipant = await ParticipantSchema.findOne({ user: sender, conversationId });
+            if (!isParticipant) {
+                res.status(Status.BAD_REQUEST).json(
+                    errorResponse(Status.BAD_REQUEST, 'Bạn không phải là thành viên trong cuộc trò chuyện này'),
+                );
+                return;
+            }
+
+            // if user deleted conversation before, and create message is in 1-1 conversation, we need to restore conversation and participants for this user
+            if (isGroup === 'false') {
+                const participants = await ParticipantSchema.find({ conversationId, deletedAt: { $ne: null } });
+
+                if (participants.length > 0) {
+                    for (const participant of participants) {
+                        participant.deletedAt = null;
+                        participant.jointAt = new Date();
+                        await participant.save();
+                    }
+                }
+            }
+
+            // create message
+            const newMessage = await MessageSchema.create({
+                conversationId,
+                sender: new Types.ObjectId(String(sender)),
+                messageType: type,
+            });
+
+            isExistConversation.lastMessage = {
+                content: newMessage.content || '',
+                type: type || 'text',
+                sender: new Types.ObjectId(String(sender)),
+                sentAt: new Date(),
+                readedBy: [new Types.ObjectId(String(sender))],
+            };
+
+            isParticipant.lastMessage = newMessage._id;
+
+            isParticipant.lastMessageReadAt = new Date();
+            await isParticipant.save();
+
+            const savedConversation = await isExistConversation.save();
+
+            const populatedConversation = await savedConversation.populate([
+                {
+                    path: 'createdBy',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'participants',
+                    populate: {
+                        path: 'user',
+                        select: '_id avatar username fullName',
+                    },
+                },
+                {
+                    path: 'lastMessage.sender',
+                    select: '_id avatar username fullName',
+                },
+                {
+                    path: 'pinnedMessage',
+                    select: 'content sender',
+                    populate: {
+                        path: 'sender',
+                        select: '_id avatar username fullName email',
+                    },
+                },
+            ]);
+
+            const populatedMessage = await newMessage.populate([
+                { path: 'sender', select: 'fullName avatar username' },
+                { path: 'attachments', select: 'url name type size' },
+                { path: 'images', select: 'images' },
+                {
+                    path: 'replyTo',
+                    select: 'content',
+                    populate: {
+                        path: 'sender',
+                        select: 'fullName firstName avatar username',
+                    },
+                },
+                {
+                    path: 'mentionedUsers',
+                    select: '_id avatar username fullName',
+                },
+            ]);
+
+            const participants = await ParticipantSchema.find({ conversationId }).select('user');
+            const participantUserIds = new Set(participants.map((p) => p.user.toString()));
+
+            // ws send message to all members in group
+            const socket = ws.getWSS();
+            if (socket) {
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'message',
+                                data: {
+                                    message: populatedMessage,
+                                    conversationId,
+                                },
+                            }),
+                        );
+                    }
+                });
+                // ws send last message to all members in group
+                socket.clients.forEach((client) => {
+                    const customClient = client as CustomWebSocket;
+                    if (customClient.isAuthenticated && participantUserIds.has(customClient.userId)) {
+                        customClient.send(
+                            JSON.stringify({
+                                type: 'last-conversation',
+                                data: {
+                                    conversation: populatedConversation,
+                                },
+                            }),
+                        );
+                    }
+                });
+            }
+
+            res.status(Status.OK).json(successResponse(Status.OK, 'Create message successfully', populatedMessage));
+            return;
+        } catch (error) {
+            next(error);
+        }
+    }
+
     async reaction(req: AuthRequest, res: Response, next: NextFunction) {
         try {
             const meId = req.payload?.userId;
