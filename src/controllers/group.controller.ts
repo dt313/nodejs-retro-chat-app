@@ -374,8 +374,8 @@ class GroupController {
                 return;
             }
 
-            const participants = await ParticipantSchema.find({
-                conversationId: groupId,
+            const participantsRaw = await ParticipantSchema.find({
+                conversationId: new Types.ObjectId(groupId),
             })
                 .populate({
                     path: 'user',
@@ -383,6 +383,8 @@ class GroupController {
                     select: '_id avatar username fullName',
                 })
                 .select('-lastMessage -lastMessageReadAt -deletedAt -nickname');
+
+            const participants = participantsRaw.filter((p) => p.user !== null);
 
             res.status(Status.OK).json(
                 successResponse(Status.OK, 'Members of group fetched successfully', participants),
@@ -429,8 +431,8 @@ class GroupController {
                 return;
             }
 
-            let participants = await ParticipantSchema.find({
-                conversationId: groupId,
+            const participantsRaw = await ParticipantSchema.find({
+                conversationId: new Types.ObjectId(groupId),
             })
                 .populate({
                     path: 'user',
@@ -438,6 +440,8 @@ class GroupController {
                     select: '_id avatar username fullName',
                 })
                 .select('-lastMessage -lastMessageReadAt -deletedAt -nickname');
+
+            let participants = participantsRaw.filter((p) => p.user !== null);
 
             if (meId) {
                 const friendShips = await FriendshipSchema.find({ $or: [{ user1: meId }, { user2: meId }] });
