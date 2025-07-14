@@ -158,3 +158,9 @@ npm run dev
 **RUN ON SSL**
 
 - setting certificate
+
+**Build image for render**
+
+```bash
+docker buildx build --platform linux/amd64 -t dt313docker/retro-api:vx.x.x .
+```
