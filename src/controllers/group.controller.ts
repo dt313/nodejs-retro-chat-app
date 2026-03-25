@@ -181,7 +181,7 @@ class GroupController {
 
             let isValidPassword = !group.isPrivate;
             if (group.isPrivate) {
-                isValidPassword = await verifyPassword(password, group.password);
+                isValidPassword = await verifyPassword(password, group.password ?? '');
                 if (!isValidPassword) {
                     res.status(Status.BAD_REQUEST).json(errorResponse(Status.BAD_REQUEST, 'Mật khẩu không chính xác'));
                     return;
@@ -375,7 +375,7 @@ class GroupController {
             }
 
             const participantsRaw = await ParticipantSchema.find({
-                conversationId: new Types.ObjectId(groupId),
+                conversationId: new Types.ObjectId(result.data.groupId),
             })
                 .populate({
                     path: 'user',
@@ -432,7 +432,7 @@ class GroupController {
             }
 
             const participantsRaw = await ParticipantSchema.find({
-                conversationId: new Types.ObjectId(groupId),
+                conversationId: new Types.ObjectId(result.data.groupId),
             })
                 .populate({
                     path: 'user',

@@ -1097,7 +1097,7 @@ class MessageController {
                 }
             };
 
-            const Model = getType(type) as Model<any>;
+            const Model = getType(result.data.type) as Model<any>;
 
             const isExistMessage = await Model.findById(messageId);
             if (!isExistMessage) {

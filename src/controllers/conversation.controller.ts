@@ -354,7 +354,7 @@ class ConversationController {
 
     async getMessageOfConversationById(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { conversationId } = req.params;
+            const { conversationId  }  = req.params;
             const meId = req.payload?.userId;
 
             const result = conversationValidate.getMessageOfConversationById.safeParse({ conversationId, meId });
@@ -402,8 +402,8 @@ class ConversationController {
             }
 
             const filter: MessageFilter = conversation?.isGroup
-                ? { conversationId }
-                : { conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
+                ? { conversationId: result.data.conversationId }
+                : { conversationId:  result.data.conversationId, createdAt: { $gte: isParticipant.jointAt.toISOString() } };
             // const filter: MessageFilter = { conversationId };
 
             if (before && typeof before === 'string') {
@@ -473,6 +473,7 @@ class ConversationController {
             const meId = req.payload?.userId;
             const { withUserId } = req.params;
 
+
             const result = conversationValidate.getOrCreateConversation.safeParse({ meId, userId: withUserId });
 
             if (!result.success) {
@@ -482,7 +483,7 @@ class ConversationController {
                 return;
             }
 
-            const isExistUser = await UserSchema.findById(withUserId);
+            const isExistUser = await UserSchema.findById(result.data.userId);
 
             if (!isExistUser) {
                 res.status(Status.NOT_FOUND).json(errorResponse(Status.NOT_FOUND, 'Không tìm thấy người dùng'));
@@ -512,7 +513,7 @@ class ConversationController {
                 },
                 {
                     $match: {
-                        memberIds: { $all: [new Types.ObjectId(meId), new Types.ObjectId(withUserId)] },
+                        memberIds: { $all: [new Types.ObjectId(meId), new Types.ObjectId(result.data.userId)] },
                         $expr: { $eq: [{ $size: '$memberIds' }, 2] },
                     },
                 },

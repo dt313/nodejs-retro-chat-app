@@ -12,3 +12,9 @@ services:
             - ./mongo-data/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
         ports:
             - '27017:27017'
+    redis:
+        image: redis:latest
+        container_name: redis
+        restart: always
+        ports:
+            - '6379:6379'
